@@ -5,7 +5,7 @@ from pydantic.v1 import validator
 
 from vocode.streaming.models.client_backend import OutputAudioConfig
 from vocode.streaming.output_device.abstract_output_device import AbstractOutputDevice
-from vocode.streaming.telephony.constants import DEFAULT_AUDIO_ENCODING, DEFAULT_SAMPLING_RATE
+from vocode.streaming.telephony.constants import VONAGE_AUDIO_ENCODING, VONAGE_SAMPLING_RATE
 
 from .audio import AudioEncoding, SamplingRate
 from .model import BaseModel, TypedModel
@@ -58,7 +58,9 @@ class SynthesizerConfig(TypedModel, type=SynthesizerType.BASE.value):  # type: i
     @classmethod
     def from_telephone_output_device(cls, **kwargs):
         return cls(
-            sampling_rate=DEFAULT_SAMPLING_RATE, audio_encoding=DEFAULT_AUDIO_ENCODING, **kwargs
+            sampling_rate=VONAGE_SAMPLING_RATE,
+            audio_encoding=VONAGE_AUDIO_ENCODING,
+            **kwargs
         )
 
     @classmethod

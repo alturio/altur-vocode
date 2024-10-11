@@ -8,9 +8,9 @@ from vocode.streaming.input_device.base_input_device import BaseInputDevice
 from vocode.streaming.models.client_backend import InputAudioConfig
 from vocode.streaming.models.model import BaseModel
 from vocode.streaming.telephony.constants import (
-    DEFAULT_AUDIO_ENCODING,
-    DEFAULT_CHUNK_SIZE,
-    DEFAULT_SAMPLING_RATE,
+    VONAGE_AUDIO_ENCODING,
+    VONAGE_CHUNK_SIZE,
+    VONAGE_SAMPLING_RATE,
 )
 
 from .audio import AudioEncoding
@@ -89,9 +89,9 @@ class TranscriberConfig(TypedModel, type=TranscriberType.BASE.value):  # type: i
         **kwargs,
     ):
         return cls(
-            sampling_rate=DEFAULT_SAMPLING_RATE,
-            audio_encoding=DEFAULT_AUDIO_ENCODING,
-            chunk_size=DEFAULT_CHUNK_SIZE,
+            sampling_rate=VONAGE_SAMPLING_RATE,
+            audio_encoding=VONAGE_AUDIO_ENCODING,
+            chunk_size=VONAGE_CHUNK_SIZE,
             endpointing_config=endpointing_config,
             **kwargs,
         )
