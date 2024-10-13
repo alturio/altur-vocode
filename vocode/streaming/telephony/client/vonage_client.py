@@ -55,12 +55,15 @@ class VonageClient(AbstractTelephonyClient):
     ) -> str:  # identifier of the call on the telephony provider
         event_url = telephony_params.pop("event_url", [])
         event_url = [event_url] if isinstance(event_url, str) else event_url
+        recording_url = telephony_params.pop("recording_url", [])
+        recording_url = [recording_url] if isinstance(recording_url, str) else recording_url
         return await self._create_vonage_call(
             to_phone,
             from_phone,
             self.create_call_ncco(
                 conversation_id=conversation_id,
                 record=record,
+                recording_url=recording_url,
                 is_outbound=True,
             ),
             digits,
@@ -94,7 +97,8 @@ class VonageClient(AbstractTelephonyClient):
     def create_call_ncco(
         self,
         conversation_id,
-        record,  # currently no-op
+        record,
+        recording_url,
         is_outbound: bool = False,
     ):
         ncco: List[Dict[str, Any]] = []
@@ -111,6 +115,13 @@ class VonageClient(AbstractTelephonyClient):
                 ],
             },
         )
+        if record:
+            ncco.append(
+                {
+                    "action": "record",
+                    "eventUrl": recording_url,
+                }
+            )
         return ncco
 
     async def _create_vonage_call(
