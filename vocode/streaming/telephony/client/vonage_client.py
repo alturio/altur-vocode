@@ -53,6 +53,8 @@ class VonageClient(AbstractTelephonyClient):
         digits: Optional[str] = None,
         telephony_params: Optional[Dict[str, str]] = None,
     ) -> str:  # identifier of the call on the telephony provider
+        event_url = telephony_params.pop("event_url", [])
+        event_url = [event_url] if isinstance(event_url, str) else event_url
         return await self._create_vonage_call(
             to_phone,
             from_phone,
@@ -62,7 +64,8 @@ class VonageClient(AbstractTelephonyClient):
                 is_outbound=True,
             ),
             digits,
-            event_urls=[],
+            event_url=event_url,
+            telephony_params=telephony_params,
         )
 
     async def end_call(self, id) -> bool:
@@ -116,8 +119,8 @@ class VonageClient(AbstractTelephonyClient):
         from_phone: str,
         ncco: str,
         digits: Optional[str] = None,
-        event_urls: List[str] = [],
-        **kwargs,
+        event_url: List[str] = [],
+        telephony_params: Optional[Dict[str, str]] = None,
     ) -> str:  # returns the Vonage UUID
         vonage_call_uuid: str
         async with AsyncRequestor().get_session().post(
@@ -126,8 +129,8 @@ class VonageClient(AbstractTelephonyClient):
                 "to": [{"type": "phone", "number": to_phone, "dtmfAnswer": digits}],
                 "from": {"type": "phone", "number": from_phone},
                 "ncco": ncco,
-                "event_url": event_urls,
-                **kwargs,
+                "event_url": event_url,
+                **(telephony_params or {}),
             },
             headers={"Authorization": f"Bearer {self.client._generate_application_jwt().decode()}"},
         ) as response:
