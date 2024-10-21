@@ -13,14 +13,14 @@ from vocode.streaming.output_device.abstract_output_device import AbstractOutput
 from vocode.streaming.output_device.audio_chunk import ChunkState
 from vocode.streaming.streaming_conversation import StreamingConversation
 from vocode.streaming.synthesizer.base_synthesizer import BaseSynthesizer
-from vocode.streaming.telephony.constants import DEFAULT_CHUNK_SIZE, DEFAULT_SAMPLING_RATE
+from vocode.streaming.telephony.constants import DEFAULT_AUDIO_ENCODING, DEFAULT_SAMPLING_RATE, VONAGE_CHUNK_SIZE, VONAGE_SAMPLING_RATE
 from vocode.streaming.transcriber.base_transcriber import BaseTranscriber
 from vocode.streaming.transcriber.deepgram_transcriber import DeepgramEndpointingConfig
 from vocode.streaming.utils.events_manager import EventsManager
 
 DEFAULT_DEEPGRAM_TRANSCRIBER_CONFIG = DeepgramTranscriberConfig(
-    chunk_size=DEFAULT_CHUNK_SIZE,
-    sampling_rate=DEFAULT_SAMPLING_RATE,
+    chunk_size=VONAGE_CHUNK_SIZE,
+    sampling_rate=VONAGE_SAMPLING_RATE,
     audio_encoding=AudioEncoding.MULAW,
     endpointing_config=DeepgramEndpointingConfig(),
     model="2-phonecall",
