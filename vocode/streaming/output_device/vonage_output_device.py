@@ -34,6 +34,9 @@ class VonageOutputDevice(RateLimitInterruptionsOutputDevice):
             self.output_speaker.consume_nonblocking(chunk)
         for i in range(0, len(chunk), VONAGE_CHUNK_SIZE):
             subchunk = chunk[i : i + VONAGE_CHUNK_SIZE]
+
+            print(f"Sending subchunk of size: {len(subchunk)}")
+
             if len(subchunk) % 2 == 1:
                 subchunk += PCM_SILENCE_BYTE  # pad with silence, Vonage goes crazy otherwise
             if self.ws and self.ws.application_state != WebSocketState.DISCONNECTED:
