@@ -134,15 +134,20 @@ class VonageClient(AbstractTelephonyClient):
         telephony_params: Optional[Dict[str, str]] = None,
     ) -> str:  # returns the Vonage UUID
         vonage_call_uuid: str
+        # TODO: Make this less messy
+        json_body = {
+            "to": [{"type": "phone", "number": to_phone, "dtmfAnswer": digits}],
+            "ncco": ncco,
+            "event_url": event_url,
+            **(telephony_params or {}),
+        }
+        if from_phone:
+            json_body["from"] = {"type": "phone", "number": from_phone}
+        else:
+            json_body["random_from_number"] = True
         async with AsyncRequestor().get_session().post(
             "https://api.nexmo.com/v1/calls",
-            json={
-                "to": [{"type": "phone", "number": to_phone, "dtmfAnswer": digits}],
-                "from": {"type": "phone", "number": from_phone},
-                "ncco": ncco,
-                "event_url": event_url,
-                **(telephony_params or {}),
-            },
+            json=json_body,
             headers={"Authorization": f"Bearer {self.client._generate_application_jwt().decode()}"},
         ) as response:
             if not response.ok:
