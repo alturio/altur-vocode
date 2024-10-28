@@ -141,10 +141,10 @@ class VonageClient(AbstractTelephonyClient):
             "event_url": event_url,
             **(telephony_params or {}),
         }
-        if from_phone:
-            json_body["from"] = {"type": "phone", "number": from_phone}
-        else:
+        if from_phone == "random":
             json_body["random_from_number"] = True
+        else:
+            json_body["from"] = {"type": "phone", "number": from_phone}
         async with AsyncRequestor().get_session().post(
             "https://api.nexmo.com/v1/calls",
             json=json_body,
