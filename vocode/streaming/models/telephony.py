@@ -102,7 +102,7 @@ class BaseCallConfig(TypedModel, type=CallConfigType.BASE.value):  # type: ignor
     to_phone: str
     sentry_tags: Dict[str, str] = {}
     conference: bool = False
-    telephony_params: Optional[Dict[str, str]] = None
+    telephony_params: Optional[Dict[str, str | int | Dict[str, str | int]]] = None
     direction: PhoneCallDirection
 
     @staticmethod

@@ -20,7 +20,7 @@ class AbstractTelephonyClient(ABC):
         from_phone: str,
         record: bool = False,
         digits: Optional[str] = None,
-        telephony_params: Optional[Dict[str, str]] = None,
+        telephony_params: Optional[Dict[str, str | int | Dict[str, str | int]]] = None,
     ) -> str:  # returns identifier of the call on the telephony provider
         pass
 
