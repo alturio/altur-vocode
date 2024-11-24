@@ -13,7 +13,7 @@ from vocode.streaming.output_device.abstract_output_device import AbstractOutput
 from vocode.streaming.output_device.audio_chunk import ChunkState
 from vocode.streaming.streaming_conversation import StreamingConversation
 from vocode.streaming.synthesizer.base_synthesizer import BaseSynthesizer
-from vocode.streaming.telephony.constants import DEFAULT_AUDIO_ENCODING, DEFAULT_SAMPLING_RATE, VONAGE_CHUNK_SIZE, VONAGE_SAMPLING_RATE
+from vocode.streaming.telephony.constants import TWILIO_SAMPLING_RATE, VONAGE_CHUNK_SIZE, VONAGE_SAMPLING_RATE
 from vocode.streaming.transcriber.base_transcriber import BaseTranscriber
 from vocode.streaming.transcriber.deepgram_transcriber import DeepgramEndpointingConfig
 from vocode.streaming.utils.events_manager import EventsManager
@@ -29,7 +29,7 @@ DEFAULT_DEEPGRAM_TRANSCRIBER_CONFIG = DeepgramTranscriberConfig(
 
 DEFAULT_SYNTHESIZER_CONFIG = PlayHtSynthesizerConfig(
     voice_id="test_voice_id",
-    sampling_rate=DEFAULT_SAMPLING_RATE,
+    sampling_rate=TWILIO_SAMPLING_RATE,
     audio_encoding=AudioEncoding.MULAW,
 )
 
@@ -124,7 +124,7 @@ def create_fake_streaming_conversation(
     synthesizer = synthesizer or create_fake_synthesizer(mocker, DEFAULT_SYNTHESIZER_CONFIG)
     return StreamingConversation(
         output_device=DummyOutputDevice(
-            sampling_rate=DEFAULT_SAMPLING_RATE, audio_encoding=AudioEncoding.MULAW
+            sampling_rate=TWILIO_SAMPLING_RATE, audio_encoding=AudioEncoding.MULAW
         ),
         transcriber=transcriber,
         agent=agent,
