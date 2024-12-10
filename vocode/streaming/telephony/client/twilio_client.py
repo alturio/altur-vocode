@@ -74,7 +74,6 @@ class TwilioClient(AbstractTelephonyClient):
                         f"Twilio failed to create call: {response.status} {response.reason}"
                     )
             response = await response.json()
-            print(response)
             return response["sid"]
 
     def get_connection_twiml(self, conversation_id: str):

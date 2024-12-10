@@ -127,6 +127,7 @@ class TelephonyServer:
                 from_phone=twilio_from,
                 to_phone=twilio_to,
                 direction="inbound",
+                telephony_params=inbound_call_config.twilio_config.extra_params or {},
             )
 
             conversation_id = create_conversation_id()
