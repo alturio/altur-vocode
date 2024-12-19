@@ -51,7 +51,7 @@ class VonageClient(AbstractTelephonyClient):
         from_phone: str,
         record: bool = False,
         digits: Optional[str] = None,
-        telephony_params: Optional[Dict[str, str | int | Dict[str, str | int]]] = None,
+        telephony_params: Any = None,
     ) -> str:  # identifier of the call on the telephony provider
         event_url = telephony_params.pop("event_url", [])
         event_url = [event_url] if isinstance(event_url, str) else event_url
@@ -131,7 +131,7 @@ class VonageClient(AbstractTelephonyClient):
         ncco: str,
         digits: Optional[str] = None,
         event_url: List[str] = [],
-        telephony_params: Optional[Dict[str, str | int | Dict[str, str | int]]] = None,
+        telephony_params: Any = None,
     ) -> str:  # returns the Vonage UUID
         vonage_call_uuid: str
         # TODO: Make this less messy

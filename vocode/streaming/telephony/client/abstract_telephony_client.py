@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Any, Optional
 
 from vocode.streaming.models.telephony import TelephonyProviderConfig
 
@@ -20,7 +20,7 @@ class AbstractTelephonyClient(ABC):
         from_phone: str,
         record: bool = False,
         digits: Optional[str] = None,
-        telephony_params: Optional[Dict[str, str | int | Dict[str, str | int]]] = None,
+        telephony_params: Any = None,
     ) -> str:  # returns identifier of the call on the telephony provider
         pass
 

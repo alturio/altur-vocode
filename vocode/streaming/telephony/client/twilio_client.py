@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Optional
+from typing import Any, Optional
 
 import aiohttp
 from loguru import logger
@@ -44,7 +44,7 @@ class TwilioClient(AbstractTelephonyClient):
         from_phone: str,
         record: bool = False,  # currently no-op
         digits: Optional[str] = None,  # currently no-op
-        telephony_params: Optional[Dict[str, str | int | Dict[str, str | int]]] = None,
+        telephony_params: Any = None,
     ) -> str:
         data = {
             "Twiml": self.get_connection_twiml(conversation_id=conversation_id).body.decode(

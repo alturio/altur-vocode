@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
@@ -28,7 +28,7 @@ class OutboundCall:
         config_manager: BaseConfigManager,
         agent_config: AgentConfig,
         telephony_config: TelephonyConfig,
-        telephony_params: Optional[Dict[str, str | int | Dict[str, str | int]]] = None,
+        telephony_params: Any = None,
         transcriber_config: Optional[TranscriberConfig] = None,
         synthesizer_config: Optional[SynthesizerConfig] = None,
         conversation_id: Optional[str] = None,
