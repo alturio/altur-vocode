@@ -16,6 +16,9 @@ from vocode.streaming.telephony.constants import (
     VONAGE_AUDIO_ENCODING,
     VONAGE_CHUNK_SIZE,
     VONAGE_SAMPLING_RATE,
+    ALTUR_SAMPLING_RATE,
+    ALTUR_AUDIO_ENCODING,
+    ALTUR_CHUNK_SIZE,
 )
 
 
@@ -37,6 +40,10 @@ class VonageConfig(TelephonyProviderConfig):
     private_key: str
 
 
+class AlturConfig(TelephonyProviderConfig):
+    pass
+
+
 class CallEntity(BaseModel):
     phone_number: str
 
@@ -52,12 +59,14 @@ class CreateInboundCall(BaseModel):
     conversation_id: Optional[str] = None
     twilio_config: Optional[TwilioConfig] = None
     vonage_config: Optional[VonageConfig] = None
+    altur_config: Optional[AlturConfig] = None
 
 
 class EndOutboundCall(BaseModel):
     call_id: str
     vonage_config: Optional[VonageConfig] = None
     twilio_config: Optional[TwilioConfig] = None
+    altur_config: Optional[AlturConfig] = None
 
 
 class CreateOutboundCall(BaseModel):
@@ -69,6 +78,7 @@ class CreateOutboundCall(BaseModel):
     conversation_id: Optional[str] = None
     vonage_config: Optional[VonageConfig] = None
     twilio_config: Optional[TwilioConfig] = None
+    altur_config: Optional[AlturConfig] = None
     # TODO add IVR/etc.
 
 
@@ -83,12 +93,14 @@ class DialIntoZoomCall(BaseModel):
     conversation_id: Optional[str] = None
     vonage_config: Optional[VonageConfig] = None
     twilio_config: Optional[TwilioConfig] = None
+    altur_config: Optional[AlturConfig] = None
 
 
 class CallConfigType(str, Enum):
     BASE = "call_config_base"
     TWILIO = "call_config_twilio"
     VONAGE = "call_config_vonage"
+    ALTUR = "call_config_altur"
 
 
 PhoneCallDirection = Literal["inbound", "outbound"]
@@ -161,4 +173,27 @@ class VonageCallConfig(BaseCallConfig, type=CallConfigType.VONAGE.value):  # typ
         )
 
 
-TelephonyConfig = Union[TwilioConfig, VonageConfig]
+class AlturCallConfig(BaseCallConfig, type=CallConfigType.ALTUR.value):  # type: ignore
+    altur_config: AlturConfig
+    altur_call_id: str
+
+    @staticmethod
+    def default_transcriber_config():
+        return DeepgramTranscriberConfig(
+            sampling_rate=ALTUR_SAMPLING_RATE,
+            audio_encoding=ALTUR_AUDIO_ENCODING,
+            chunk_size=ALTUR_CHUNK_SIZE,
+            model="phonecall",
+            tier="nova",
+            endpointing_config=PunctuationEndpointingConfig(),
+        )
+
+    @staticmethod
+    def default_synthesizer_config():
+        return AzureSynthesizerConfig(
+            sampling_rate=ALTUR_SAMPLING_RATE,
+            audio_encoding=ALTUR_AUDIO_ENCODING,
+        )
+
+
+TelephonyConfig = Union[TwilioConfig, VonageConfig, AlturConfig]

@@ -10,11 +10,14 @@ from vocode.streaming.models.telephony import (
     TwilioConfig,
     VonageCallConfig,
     VonageConfig,
+    AlturCallConfig,
+    AlturConfig,
 )
 from vocode.streaming.models.transcriber import TranscriberConfig
 from vocode.streaming.telephony.client.abstract_telephony_client import AbstractTelephonyClient
 from vocode.streaming.telephony.client.twilio_client import TwilioClient
 from vocode.streaming.telephony.client.vonage_client import VonageClient
+from vocode.streaming.telephony.client.altur_client import AlturClient
 from vocode.streaming.telephony.config_manager.base_config_manager import BaseConfigManager
 from vocode.streaming.utils import create_conversation_id
 
@@ -58,6 +61,8 @@ class OutboundCall:
             return TwilioClient(base_url=self.base_url, maybe_twilio_config=self.telephony_config)
         elif isinstance(self.telephony_config, VonageConfig):
             return VonageClient(base_url=self.base_url, maybe_vonage_config=self.telephony_config)
+        elif isinstance(self.telephony_config, AlturConfig):
+            return AlturClient(base_url=self.base_url, maybe_altur_config=self.telephony_config)
 
     def create_transcriber_config(
         self, transcriber_config_override: Optional[TranscriberConfig]
@@ -68,6 +73,8 @@ class OutboundCall:
             return TwilioCallConfig.default_transcriber_config()
         elif isinstance(self.telephony_config, VonageConfig):
             return VonageCallConfig.default_transcriber_config()
+        elif isinstance(self.telephony_config, AlturConfig):
+            return AlturCallConfig.default_transcriber_config()
         else:
             raise ValueError("No telephony config provided")
 
@@ -80,6 +87,8 @@ class OutboundCall:
             return TwilioCallConfig.default_synthesizer_config()
         elif isinstance(self.telephony_config, VonageConfig):
             return VonageCallConfig.default_synthesizer_config()
+        elif isinstance(self.telephony_config, AlturConfig):
+            return AlturCallConfig.default_synthesizer_config()
         else:
             raise ValueError("No telephony config provided")
 
@@ -116,6 +125,19 @@ class OutboundCall:
                 from_phone=self.from_phone,
                 to_phone=self.to_phone,
                 output_to_speaker=False,
+                sentry_tags=self.sentry_tags,
+                telephony_params=self.telephony_params,
+                direction="outbound",
+            )
+        elif isinstance(self.telephony_client, AlturClient):
+            call_config = AlturCallConfig(
+                transcriber_config=self.transcriber_config,
+                agent_config=self.agent_config,
+                synthesizer_config=self.synthesizer_config,
+                altur_config=self.telephony_client.altur_config,
+                altur_call_id=self.telephony_id,
+                from_phone=self.from_phone,
+                to_phone=self.to_phone,
                 sentry_tags=self.sentry_tags,
                 telephony_params=self.telephony_params,
                 direction="outbound",

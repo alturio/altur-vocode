@@ -10,6 +10,8 @@ from vocode.streaming.telephony.constants import (
     TWILIO_SAMPLING_RATE,
     VONAGE_AUDIO_ENCODING,
     VONAGE_SAMPLING_RATE,
+    ALTUR_SAMPLING_RATE,
+    ALTUR_AUDIO_ENCODING,
 )
 
 from .audio import AudioEncoding, SamplingRate
@@ -69,6 +71,12 @@ class SynthesizerConfig(TypedModel, type=SynthesizerType.BASE.value):  # type: i
     def from_vonage_output_device(cls, **kwargs):
         return cls(
             sampling_rate=VONAGE_SAMPLING_RATE, audio_encoding=VONAGE_AUDIO_ENCODING, **kwargs
+        )
+    
+    @classmethod
+    def from_altur_output_device(cls, **kwargs):
+        return cls(
+            sampling_rate=ALTUR_SAMPLING_RATE, audio_encoding=ALTUR_AUDIO_ENCODING, **kwargs
         )
 
     @classmethod

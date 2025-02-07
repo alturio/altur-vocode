@@ -14,6 +14,9 @@ from vocode.streaming.telephony.constants import (
     VONAGE_AUDIO_ENCODING,
     VONAGE_CHUNK_SIZE,
     VONAGE_SAMPLING_RATE,
+    ALTUR_SAMPLING_RATE,
+    ALTUR_AUDIO_ENCODING,
+    ALTUR_CHUNK_SIZE,
 )
 
 from .audio import AudioEncoding
@@ -108,6 +111,20 @@ class TranscriberConfig(TypedModel, type=TranscriberType.BASE.value):  # type: i
             sampling_rate=VONAGE_SAMPLING_RATE,
             audio_encoding=VONAGE_AUDIO_ENCODING,
             chunk_size=VONAGE_CHUNK_SIZE,
+            endpointing_config=endpointing_config,
+            **kwargs,
+        )
+
+    @classmethod
+    def from_altur_input_device(
+        cls,
+        endpointing_config: Optional[EndpointingConfig] = None,
+        **kwargs,
+    ):
+        return cls(
+            sampling_rate=ALTUR_SAMPLING_RATE,
+            audio_encoding=ALTUR_AUDIO_ENCODING,
+            chunk_size=ALTUR_CHUNK_SIZE,
             endpointing_config=endpointing_config,
             **kwargs,
         )

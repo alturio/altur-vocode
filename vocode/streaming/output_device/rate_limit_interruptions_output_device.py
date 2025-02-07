@@ -19,9 +19,11 @@ class RateLimitInterruptionsOutputDevice(AbstractOutputDevice):
         sampling_rate: int,
         audio_encoding: AudioEncoding,
         per_chunk_allowance_seconds: float = PER_CHUNK_ALLOWANCE_SECONDS,
+        call_id: str | None = None,
     ):
         super().__init__(sampling_rate, audio_encoding)
         self.per_chunk_allowance_seconds = per_chunk_allowance_seconds
+        self.call_id = call_id
 
     async def _run_loop(self):
         while True:
@@ -43,7 +45,7 @@ class RateLimitInterruptionsOutputDevice(AbstractOutputDevice):
                 self.audio_encoding,
                 self.sampling_rate,
             )
-            await self.play(audio_chunk.data)
+            await self.play(audio_chunk.data, self.call_id)
             audio_chunk.on_play()
             audio_chunk.state = ChunkState.PLAYED
             end_time = time.time()
@@ -58,7 +60,7 @@ class RateLimitInterruptionsOutputDevice(AbstractOutputDevice):
             self.interruptible_event.is_interruptible = False
 
     @abstractmethod
-    async def play(self, chunk: bytes):
+    async def play(self, chunk: bytes, call_id: str | None = None):
         """Sends an audio chunk to immediate playback"""
         pass
 

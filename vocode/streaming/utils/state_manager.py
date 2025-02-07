@@ -4,6 +4,7 @@ from vocode.streaming.models.transcriber import EndpointingConfig
 from vocode.streaming.synthesizer.input_streaming_synthesizer import InputStreamingSynthesizer
 from vocode.streaming.telephony.client.twilio_client import TwilioClient
 from vocode.streaming.telephony.client.vonage_client import VonageClient
+from vocode.streaming.telephony.client.altur_client import AlturClient
 from vocode.streaming.utils.redis_conversation_message_queue import RedisConversationMessageQueue
 
 if TYPE_CHECKING:
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     )
     from vocode.streaming.telephony.conversation.vonage_phone_conversation import (
         VonagePhoneConversation,
+    )
+    from vocode.streaming.telephony.conversation.altur_phone_conversation import (
+        AlturPhoneConversation,
     )
 
 
@@ -149,6 +153,21 @@ class VonagePhoneConversationStateManager(PhoneConversationStateManager):
         return VonageClient(
             base_url=self._vonage_phone_conversation.base_url,
             maybe_vonage_config=self._vonage_phone_conversation.vonage_config,
+        )
+    
+
+class AlturPhoneConversationStateManager(PhoneConversationStateManager):
+    def __init__(self, conversation: "AlturPhoneConversation"):
+        super().__init__(conversation=conversation)
+        self._altur_phone_conversation = conversation
+
+    def get_altur_call_id(self):
+        return self._altur_phone_conversation.altur_call_id
+    
+    def create_altur_client(self):
+        return AlturClient(
+            base_url=self._altur_phone_conversation.base_url,
+            maybe_altur_config=self._altur_phone_conversation.altur_config,
         )
 
 
