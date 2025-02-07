@@ -62,7 +62,7 @@ class ExternalActionsRequester:
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "x-vocode-signature": self._encode_payload(encoded_payload, signature_secret),
+            "x-altur-signature": self._encode_payload(encoded_payload, signature_secret),
             **additional_headers,
         }
 
