@@ -36,7 +36,7 @@ class AlturOutputDevice(RateLimitInterruptionsOutputDevice):
                 sampling_rate=ALTUR_SAMPLING_RATE, blocksize=ALTUR_CHUNK_SIZE // 2
             )
 
-    async def play(self, call_id: str, chunk: bytes):
+    async def play(self, chunk: bytes, call_id: str):
         if self.output_to_speaker:
             self.output_speaker.consume_nonblocking(chunk)
         for i in range(0, len(chunk), ALTUR_CHUNK_SIZE):

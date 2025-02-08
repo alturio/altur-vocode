@@ -62,8 +62,8 @@ class AlturPhoneConversation(AbstractPhoneConversation[AlturOutputDevice]):
             base_url=base_url,
             config_manager=config_manager,
             output_device=AlturOutputDevice(
-                output_to_speaker=output_to_speaker,
                 call_id=altur_call_id,
+                output_to_speaker=output_to_speaker,
             ),
             agent_config=agent_config,
             transcriber_config=transcriber_config,
