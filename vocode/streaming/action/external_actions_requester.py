@@ -55,14 +55,14 @@ class ExternalActionsRequester:
         additional_headers: Dict[str, str] = {},
         transport: httpx.AsyncHTTPTransport = httpx.AsyncHTTPTransport(retries=2),
     ) -> ExternalActionResponse:
-        encoded_payload = json.dumps({"payload": payload} | additional_payload_values).encode(
-            "utf-8"
-        )
+        encoded_payload = json.dumps({"arguments": payload}).encode("utf-8")
 
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "x-altur-signature": self._encode_payload(encoded_payload, signature_secret),
+            "x-altur-signature": self._encode_payload(
+                encoded_payload, signature_secret
+            ),
             **additional_headers,
         }
 
@@ -109,7 +109,11 @@ class ExternalActionsRequester:
                     raise e
             except ExternalActionValueError as e:
                 return ExternalActionResponse(
-                    result={"info": ExternalActionsErrorResponses.input_error.format(error=str(e))},
+                    result={
+                        "info": ExternalActionsErrorResponses.input_error.format(
+                            error=str(e)
+                        )
+                    },
                     success=False,
                 )
 
@@ -125,7 +129,9 @@ class ExternalActionsRequester:
             raise ExternalActionValueError(
                 "Invalid response format: 'agent_message' must be a key value map"
             )
-        if "agent_message" in response and not isinstance(response["agent_message"], str):
+        if "agent_message" in response and not isinstance(
+            response["agent_message"], str
+        ):
             raise ExternalActionValueError(
                 "Invalid response format: 'agent_message' must be a string"
             )
