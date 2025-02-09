@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from vocode.streaming.models.telephony import AlturConfig
 from vocode.streaming.telephony.client.abstract_telephony_client import AbstractTelephonyClient
+from vocode.streaming.utils.async_requester import AsyncRequestor
 
 
 class AlturException(Exception):
@@ -25,4 +26,10 @@ class AlturClient(AbstractTelephonyClient):
         return conversation_id
     
     async def end_call(self, altur_call_id: str):
-        pass
+        async with AsyncRequestor().get_session().post(
+            f"{self.altur_config.telephony_url}/api/tool/hangup/{altur_call_id}",
+        ) as response:
+            if not response.ok:
+                raise AlturException(f"Failed to end call: {response.status} {response.reason}")
+            response = await response.json()
+            return response["result"]["success"]

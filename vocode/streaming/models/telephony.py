@@ -41,7 +41,7 @@ class VonageConfig(TelephonyProviderConfig):
 
 
 class AlturConfig(TelephonyProviderConfig):
-    pass
+    telephony_url: str
 
 
 class CallEntity(BaseModel):
