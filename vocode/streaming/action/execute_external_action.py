@@ -1,4 +1,5 @@
 import json
+import asyncio
 from typing import Any, Dict, Optional, Type
 
 from pydantic.v1 import BaseModel
@@ -24,7 +25,8 @@ class ExecuteExternalActionVocodeActionConfig(
     speak_on_send: bool
     speak_on_receive: bool
     signature_secret: str
-
+    async_execution: bool
+    
 
 class ExecuteExternalActionParameters(BaseModel):
     payload: Dict[str, Any]
@@ -80,10 +82,21 @@ class ExecuteExternalAction(
     async def send_external_action_request(
         self, action_input: ActionInput[ExecuteExternalActionParameters]
     ) -> ExternalActionResponse:
-        return await self.external_actions_requester.send_request(
-            payload=action_input.params.payload,
-            signature_secret=self.action_config.signature_secret,
-        )
+        if self.action_config.async_execution:
+            asyncio.create_task(
+                self.external_actions_requester.send_request(
+                    payload=action_input.params.payload,
+                    signature_secret=self.action_config.signature_secret,
+                )
+            )
+            return ExternalActionResponse(
+                result={"info": "success"}, success=True
+            )
+        else:
+            return await self.external_actions_requester.send_request(
+                payload=action_input.params.payload,
+                signature_secret=self.action_config.signature_secret,
+            )
 
     async def run(
         self, action_input: ActionInput[ExecuteExternalActionParameters]
