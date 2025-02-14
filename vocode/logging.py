@@ -2,6 +2,7 @@ import json
 import logging
 import sys
 
+from logtail import LogtailHandler
 from loguru import logger
 from loguru._handler import Handler
 
@@ -137,7 +138,7 @@ def configure_intercepter() -> None:
     logging.getLogger("uvicorn.access").handlers = [intercept_handler]
 
 
-def configure_pretty_logging() -> None:
+def configure_pretty_logging(logtail_source_token: str, logtail_host: str) -> None:
     """
     Configures the logging system to output pretty logs.
 
@@ -159,7 +160,18 @@ def configure_pretty_logging() -> None:
         serialize=False,
         colorize=True,
     )
-
+    logger.add(
+        LogtailHandler(
+            source_token=logtail_source_token,
+            host=logtail_host,
+        ),
+        level=logging.DEBUG,
+        format="{message}",
+        backtrace=False,
+        diagnose=False,
+        serialize=True,
+        colorize=True,
+    )
 
 def configure_json_logging() -> None:
     """
