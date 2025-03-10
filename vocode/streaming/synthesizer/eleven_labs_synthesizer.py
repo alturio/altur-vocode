@@ -10,6 +10,7 @@ from vocode.streaming.models.audio import AudioEncoding, SamplingRate
 from vocode.streaming.models.message import BaseMessage
 from vocode.streaming.models.synthesizer import ElevenLabsSynthesizerConfig
 from vocode.streaming.synthesizer.base_synthesizer import BaseSynthesizer, SynthesisResult
+from vocode.streaming.synthesizer.audio_cache import AudioCache
 from vocode.streaming.utils.create_task import asyncio_create_task
 
 ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1/"
@@ -112,11 +113,9 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
 
     @classmethod
     def get_voice_identifier(cls, synthesizer_config: ElevenLabsSynthesizerConfig):
-        hashed_api_key = hashlib.sha256(f"{synthesizer_config.api_key}".encode("utf-8")).hexdigest()
         return ":".join(
             (
                 "eleven_labs",
-                hashed_api_key,
                 str(synthesizer_config.voice_id),
                 str(synthesizer_config.model_id),
                 str(synthesizer_config.stability),
@@ -134,6 +133,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         chunk_size: int,
         chunk_queue: asyncio.Queue[Optional[bytes]],
     ):
+        audio_buffer = bytearray()
         try:
             async_client = self.async_requestor.get_client()
             stream = await async_client.send(
@@ -158,7 +158,17 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                         self.sample_rate,
                         self.upsample,
                     )
+                audio_buffer.extend(chunk)
                 chunk_queue.put_nowait(chunk)
+            
+            text = body.get("text", "")
+            if text:
+                audio_cache = await AudioCache.safe_create()
+                await audio_cache.set_audio(
+                    self.get_voice_identifier(self.synthesizer_config),
+                    text.strip(),
+                    bytes(audio_buffer)
+                )
         except asyncio.CancelledError:
             pass
         finally:
