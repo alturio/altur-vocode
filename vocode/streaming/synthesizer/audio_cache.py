@@ -10,8 +10,8 @@ class AudioCache(Singleton):
     def __init__(self):
         self.redis = initialize_redis_bytes()
         self.disabled = False
-        self.max_cache_size = 1024 * 1024 * 500  # 500MB
-        self.default_ttl = 3600 * 1  # 1 hour
+        self.max_cache_size = 1024 * 1024 * 1024  # 1GB
+        self.default_ttl = 3600 * 4  # 4 hours
         self.cache_info_key = "audio_cache:info"  # LRU info
         self.size_key = "audio_cache:total_size"  # total size
 
