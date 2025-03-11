@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional
 import time
 from loguru import logger
 
@@ -86,11 +86,12 @@ class AudioCache(Singleton):
         await self.update_cache_size(audio_key, audio_size)
 
     async def update_access_time(self, audio_key: str):
-        """Update the last access time for an item (for LRU)"""
+        """Update the last access time and increment access count for an item"""
         current_time = time.time()
         await self.redis.hset(
             self.cache_info_key, f"{audio_key}:last_access", current_time
         )
+        await self.redis.hincrby(self.cache_info_key, f"{audio_key}:popularity", 1)
 
     async def update_cache_size(self, audio_key: str, size: int):
         """Track the size of an item in the cache"""
@@ -102,57 +103,10 @@ class AudioCache(Singleton):
         current_size = int(await self.redis.get(self.size_key) or 0)
 
         if current_size + new_item_size > self.max_cache_size:
-            logger.info(
+            logger.warning(
                 f"Cache size would exceed limit. Current: {current_size}, New item: {new_item_size}, Max: {self.max_cache_size}"
             )
-            await self.evict_lru_items(
-                current_size + new_item_size - self.max_cache_size
-            )
-
-    async def evict_lru_items(self, bytes_to_free: int):
-        """Evict least recently used items until we've freed enough space"""
-        cache_info = await self.redis.hgetall(self.cache_info_key)
-        if not cache_info:
-            return
-
-        items: Dict[str, Dict[str, float]] = {}
-        for key, value in cache_info.items():
-            if isinstance(key, bytes):
-                key = key.decode("utf-8")
-            if isinstance(value, bytes):
-                value = value.decode("utf-8")
-
-            parts = key.rsplit(":", 1)
-            if len(parts) == 2:
-                item_key = parts[0]
-                attribute = parts[1]
-
-                if item_key not in items:
-                    items[item_key] = {}
-
-                items[item_key][attribute] = float(value)
-
-        sorted_items = sorted(
-            [(k, v) for k, v in items.items() if "last_access" in v and "size" in v],
-            key=lambda x: x[1]["last_access"],
-        )
-
-        bytes_freed = 0
-        for item_key, info in sorted_items:
-            if bytes_freed >= bytes_to_free:
-                break
-
-            item_size = int(info["size"])
-
-            await self.redis.delete(item_key)
-            await self.redis.hdel(self.cache_info_key, f"{item_key}:last_access")
-            await self.redis.hdel(self.cache_info_key, f"{item_key}:size")
-            await self.redis.decrby(self.size_key, item_size)
-
-            bytes_freed += item_size
-            logger.info(f"Evicted {item_key} from cache (size: {item_size})")
-
-        logger.info(f"Freed {bytes_freed} bytes from cache through LRU eviction")
+        return
 
     async def clear_cache(self):
         """Clear the entire cache"""
