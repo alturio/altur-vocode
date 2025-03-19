@@ -121,12 +121,14 @@ class ElevenLabsSynthesizerConfig(
     SynthesizerConfig, type=SynthesizerType.ELEVEN_LABS.value  # type: ignore
 ):
     api_key: Optional[str] = None
+    model_id: Optional[str]
     voice_id: Optional[str] = ELEVEN_LABS_ADAM_VOICE_ID
-    optimize_streaming_latency: Optional[int]
-    experimental_streaming: bool = False
     stability: Optional[float]
     similarity_boost: Optional[float]
-    model_id: Optional[str]
+    style: Optional[float] = 0
+    use_speaker_boost: Optional[bool] = True
+    speed: Optional[float] = 1.0
+    experimental_streaming: bool = False
     experimental_websocket: bool = False
     backchannel_amplitude_factor: float = 0.5
 
@@ -141,11 +143,11 @@ class ElevenLabsSynthesizerConfig(
             raise ValueError("Both stability and similarity_boost must be set or not set.")
         return similarity_boost
 
-    @validator("optimize_streaming_latency")
-    def optimize_streaming_latency_check(cls, optimize_streaming_latency):
-        if optimize_streaming_latency is not None and not (0 <= optimize_streaming_latency <= 4):
-            raise ValueError("optimize_streaming_latency must be between 0 and 4.")
-        return optimize_streaming_latency
+    @validator("speed")
+    def speed_check(cls, speed):
+        if speed is not None and not (0.7 <= speed <= 1.2):
+            raise ValueError("speed must be between 0.7 and 1.2.")
+        return speed
 
     @validator("backchannel_amplitude_factor")
     def backchannel_amplitude_factor_check(cls, backchannel_amplitude_factor):

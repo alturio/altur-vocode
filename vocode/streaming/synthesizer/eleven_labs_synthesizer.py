@@ -36,12 +36,13 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             api_key=self.api_key,
         )
 
+        self.model_id = synthesizer_config.model_id
         self.voice_id = synthesizer_config.voice_id
         self.stability = synthesizer_config.stability
         self.similarity_boost = synthesizer_config.similarity_boost
-        self.model_id = synthesizer_config.model_id
-        self.optimize_streaming_latency = synthesizer_config.optimize_streaming_latency
-        self.words_per_minute = 150
+        self.style = synthesizer_config.style
+        self.speed = synthesizer_config.speed
+        self.use_speaker_boost = synthesizer_config.use_speaker_boost
         self.upsample = None
         self.sample_rate = self.synthesizer_config.sampling_rate
 
@@ -82,7 +83,11 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             voice = Voice(
                 voice_id=self.voice_id,
                 settings=VoiceSettings(
-                    stability=self.stability, similarity_boost=self.similarity_boost
+                    stability=self.stability,
+                    similarity_boost=self.similarity_boost,
+                    style=self.style,
+                    speed=self.speed,
+                    use_speaker_boost=self.use_speaker_boost,
                 ),
             )
         else:
@@ -91,8 +96,6 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             ELEVEN_LABS_BASE_URL
             + f"text-to-speech/{self.voice_id}/stream?output_format={self.output_format}"
         )
-        if self.optimize_streaming_latency:
-            url += f"&optimize_streaming_latency={self.optimize_streaming_latency}"
         headers = {"xi-api-key": self.api_key}
         body = {
             "text": message.text,
@@ -120,7 +123,9 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                 str(synthesizer_config.model_id),
                 str(synthesizer_config.stability),
                 str(synthesizer_config.similarity_boost),
-                str(synthesizer_config.optimize_streaming_latency),
+                str(synthesizer_config.style),
+                str(synthesizer_config.speed),
+                str(synthesizer_config.use_speaker_boost),
                 synthesizer_config.audio_encoding,
             )
         )
