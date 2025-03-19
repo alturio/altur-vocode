@@ -369,9 +369,11 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
                 self.synthesizer_config,
             ).create_synthesis_result(chunk_size)
 
-        maybe_cached_audio = await self.get_cached_audio(message)
-        if maybe_cached_audio is not None:
-            return maybe_cached_audio.create_synthesis_result(chunk_size)
+        if self.synthesizer_config.use_cache:
+            maybe_cached_audio = await self.get_cached_audio(message)
+            if maybe_cached_audio is not None:
+                return maybe_cached_audio.create_synthesis_result(chunk_size)
+
         return await self.create_speech_uncached(
             message,
             chunk_size,

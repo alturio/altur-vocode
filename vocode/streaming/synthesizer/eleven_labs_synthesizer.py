@@ -161,14 +161,15 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                 audio_buffer.extend(chunk)
                 chunk_queue.put_nowait(chunk)
             
-            text = body.get("text", "")
-            if text:
-                audio_cache = await AudioCache.safe_create()
-                await audio_cache.set_audio(
-                    self.get_voice_identifier(self.synthesizer_config),
-                    text.strip(),
-                    bytes(audio_buffer)
-                )
+            if self.synthesizer_config.use_cache:
+                text = body.get("text", "")
+                if text:
+                    audio_cache = await AudioCache.safe_create()
+                    await audio_cache.set_audio(
+                        self.get_voice_identifier(self.synthesizer_config),
+                        text.strip(),
+                        bytes(audio_buffer)
+                    )
         except asyncio.CancelledError:
             pass
         finally:

@@ -49,6 +49,7 @@ class SynthesizerConfig(TypedModel, type=SynthesizerType.BASE.value):  # type: i
     audio_encoding: AudioEncoding
     should_encode_as_wav: bool = False
     sentiment_config: Optional[SentimentConfig] = None
+    use_cache: bool = True
 
     class Config:
         arbitrary_types_allowed = True
