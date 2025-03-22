@@ -97,6 +97,7 @@ class AgentConfig(TypedModel, type=AgentType.BASE.value):  # type: ignore
     num_check_human_present_times: int = 0
     allow_agent_to_be_cut_off: bool = True
     end_conversation_on_goodbye: bool = False
+    end_conversation_callback_url: Optional[str] = None
     send_filler_audio: Union[bool, FillerAudioConfig] = False
     webhook_config: Optional[WebhookConfig] = None
     actions: Optional[List[ActionConfig]] = None
