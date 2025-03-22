@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import asyncio
 import queue
 import random
@@ -1019,10 +1020,15 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
             logger.debug("Terminating events Task")
             self.events_task.cancel()
             await self.events_manager.flush()
+        if self.agent.get_agent_config().end_conversation_callback_url:
+            logger.debug("Executing end conversation callback")
+            asyncio_create_task(
+                self._execute_end_conversation_callback()
+            )
         logger.debug("Tearing down synthesizer")
         await self.synthesizer.tear_down()
         logger.debug("Terminating agent")
-        await self.agent.terminate()
+        await self.agent.terminate() 
         logger.debug("Terminating output device")
         await self.output_device.terminate()
         logger.debug("Terminating speech transcriber")
@@ -1046,3 +1052,11 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
 
     async def wait_for_termination(self):
         await self.is_terminated.wait()
+
+    async def _execute_end_conversation_callback(self):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(self.agent.get_agent_config().end_conversation_callback_url, timeout=10)
+                logger.debug(f"End conversation callback response: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error executing end conversation callback: {e}")
