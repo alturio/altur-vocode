@@ -106,6 +106,7 @@ class CallsRouter(BaseRouter):
                 agent_config=call_config.agent_config,
                 transcriber_config=call_config.transcriber_config,
                 synthesizer_config=call_config.synthesizer_config,
+                amd_config=call_config.amd_config,
                 altur_config=call_config.altur_config,
                 altur_call_id=call_config.altur_call_id,
                 conversation_id=conversation_id,

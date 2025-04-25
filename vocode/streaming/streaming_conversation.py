@@ -42,13 +42,13 @@ from vocode.streaming.constants import (
     CHECK_HUMAN_PRESENT_MESSAGE_CHOICES,
     TEXT_TO_SPEECH_CHUNK_SIZE_SECONDS,
 )
+from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.actions import EndOfTurn
 from vocode.streaming.models.agent import FillerAudioConfig
 from vocode.streaming.models.events import Sender
 from vocode.streaming.models.message import BaseMessage, BotBackchannel, LLMToken, SilenceMessage
 from vocode.streaming.models.transcriber import TranscriberConfig, Transcription
 from vocode.streaming.models.transcript import Message, Transcript, TranscriptCompleteEvent
-from vocode.streaming.output_device.abstract_output_device import AbstractOutputDevice
 from vocode.streaming.output_device.audio_chunk import AudioChunk, ChunkState
 from vocode.streaming.synthesizer.base_synthesizer import (
     BaseSynthesizer,
@@ -72,7 +72,6 @@ from vocode.streaming.utils.worker import (
     AbstractWorker,
     AsyncQueueWorker,
     InterruptibleAgentResponseEvent,
-    InterruptibleAgentResponseWorker,
     InterruptibleEvent,
     InterruptibleEventFactory,
     InterruptibleWorker,
@@ -163,6 +162,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
             self.has_associated_unignored_utterance: bool = False
             self.human_backchannels_buffer: List[Transcription] = []
             self.ignore_next_message: bool = False
+            self.amd_triggered = False
 
         def should_ignore_utterance(self, transcription: Transcription):
             if self.has_associated_unignored_utterance:
@@ -232,6 +232,24 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
             if transcription.message.strip() == "":
                 logger.info("Ignoring empty transcription")
                 return
+            # if voicemail was detected previously, ignore further human input
+            if self.amd_triggered:
+                logger.info(f"Voicemail was detected previously, ignoring further human input: {transcription.message}")
+                return
+            # keyword amd
+            if (
+                self.conversation.amd_config
+                and self.conversation.amd_config.enabled 
+                and self.conversation.start_time is not None 
+                and time.time() - self.conversation.start_time <= self.conversation.amd_config.threshold
+            ):
+                message = transcription.message.lower()
+                for keyword in self.conversation.amd_config.keywords:
+                    if keyword.lower() in message:
+                        logger.info(f"Voicemail was detected: {transcription.message}")
+                        self.amd_triggered = True
+                        await self.conversation._send_voicemail_event()
+                        return
             # ignore utterances during the initial message but still add them to the transcript
             initial_message_ongoing = not self.conversation.initial_message_tracker.is_set()
             if initial_message_ongoing or self.should_ignore_utterance(transcription):
@@ -592,6 +610,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         transcriber: BaseTranscriber[TranscriberConfig],
         agent: BaseAgent,
         synthesizer: BaseSynthesizer,
+        amd_config: AMDConfig,
         speed_coefficient: float = 1.0,
         conversation_id: Optional[str] = None,
         events_manager: Optional[EventsManager] = None,
@@ -604,6 +623,8 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         self.agent = agent
         self.synthesizer = synthesizer
         self.synthesis_enabled = True
+
+        self.amd_config = amd_config
 
         self.interruptible_events: queue.Queue[InterruptibleEvent] = queue.Queue()
         self.interruptible_event_factory = self.QueueingInterruptibleEventFactory(conversation=self)
@@ -735,6 +756,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
             self.events_task = asyncio_create_task(
                 self.events_manager.start(),
             )
+        self.start_time = time.time()
 
     def set_check_for_idle_paused(self, paused: bool):
         logger.debug(f"Setting idle check paused to {paused}")
@@ -768,7 +790,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         check_human_present_count = 0
         check_human_present_threshold = self.agent.get_agent_config().num_check_human_present_times
         while self.is_active():
-            if check_human_present_count > 0 and self.is_human_still_there == True:
+            if check_human_present_count > 0 and self.is_human_still_there:
                 # Reset the counter if the human is still there
                 check_human_present_count = 0
             if (
@@ -1060,3 +1082,17 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
                 logger.debug(f"End conversation callback response: {response.status_code}")
         except Exception as e:
             logger.error(f"Error executing end conversation callback: {e}")
+
+    async def _send_voicemail_event(self):
+        try:
+            async with httpx.AsyncClient() as client:
+                body = {
+                    "arguments": {
+                        "answered_by": "machine",
+                        "explanation": "keyword",
+                    }
+                }
+                response = await client.post(self.amd_config.callback_url, json=body, timeout=10)
+                logger.debug(f"Voicemail callback response: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error sending voicemail event: {e}")

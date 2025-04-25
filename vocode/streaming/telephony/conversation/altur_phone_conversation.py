@@ -8,6 +8,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
+from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import PhoneCallConnectedEvent
 from vocode.streaming.models.synthesizer import SynthesizerConfig
@@ -42,6 +43,7 @@ class AlturPhoneConversation(AbstractPhoneConversation[AlturOutputDevice]):
         agent_config: AgentConfig,
         transcriber_config: TranscriberConfig,
         synthesizer_config: SynthesizerConfig,
+        amd_config: AMDConfig,
         altur_call_id: str,
         altur_config: AlturConfig,
         agent_factory: AbstractAgentFactory,
@@ -68,6 +70,7 @@ class AlturPhoneConversation(AbstractPhoneConversation[AlturOutputDevice]):
             agent_config=agent_config,
             transcriber_config=transcriber_config,
             synthesizer_config=synthesizer_config,
+            amd_config=amd_config,
             conversation_id=conversation_id,
             events_manager=events_manager,
             transcriber_factory=transcriber_factory,

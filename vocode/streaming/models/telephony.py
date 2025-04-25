@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Any, Dict, Literal, Optional, Union
 
 from vocode.streaming.models.agent import AgentConfig
+from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.model import BaseModel, TypedModel
 from vocode.streaming.models.synthesizer import AzureSynthesizerConfig, SynthesizerConfig
 from vocode.streaming.models.transcriber import (
@@ -75,6 +76,7 @@ class CreateOutboundCall(BaseModel):
     transcriber_config: Optional[TranscriberConfig] = None
     agent_config: AgentConfig
     synthesizer_config: Optional[SynthesizerConfig] = None
+    amd_config: Optional[AMDConfig] = None
     conversation_id: Optional[str] = None
     vonage_config: Optional[VonageConfig] = None
     twilio_config: Optional[TwilioConfig] = None
@@ -110,6 +112,7 @@ class BaseCallConfig(TypedModel, type=CallConfigType.BASE.value):  # type: ignor
     transcriber_config: TranscriberConfig
     agent_config: AgentConfig
     synthesizer_config: SynthesizerConfig
+    amd_config: AMDConfig
     from_phone: str
     to_phone: str
     sentry_tags: Dict[str, str] = {}

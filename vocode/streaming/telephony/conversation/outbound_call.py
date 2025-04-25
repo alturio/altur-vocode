@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from loguru import logger
 
 from vocode.streaming.models.agent import AgentConfig
+from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.synthesizer import SynthesizerConfig
 from vocode.streaming.models.telephony import (
     TelephonyConfig,
@@ -34,6 +35,7 @@ class OutboundCall:
         telephony_params: Any = None,
         transcriber_config: Optional[TranscriberConfig] = None,
         synthesizer_config: Optional[SynthesizerConfig] = None,
+        amd_config: Optional[AMDConfig] = None,
         conversation_id: Optional[str] = None,
         sentry_tags: Dict[str, str] = {},
         digits: Optional[
@@ -52,6 +54,7 @@ class OutboundCall:
         self.telephony_client = self.create_telephony_client()
         self.transcriber_config = self.create_transcriber_config(transcriber_config)
         self.synthesizer_config = self.create_synthesizer_config(synthesizer_config)
+        self.amd_config = amd_config
         self.output_to_speaker = output_to_speaker
         self.sentry_tags = sentry_tags
         self.digits = digits
@@ -134,6 +137,7 @@ class OutboundCall:
                 transcriber_config=self.transcriber_config,
                 agent_config=self.agent_config,
                 synthesizer_config=self.synthesizer_config,
+                amd_config=self.amd_config,
                 altur_config=self.telephony_client.altur_config,
                 altur_call_id=self.telephony_id,
                 from_phone=self.from_phone,

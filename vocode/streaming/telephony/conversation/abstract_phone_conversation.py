@@ -6,6 +6,7 @@ from loguru import logger
 
 from vocode import conversation_id as ctx_conversation_id
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
+from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import PhoneCallEndedEvent
 from vocode.streaming.models.synthesizer import SynthesizerConfig
@@ -43,6 +44,7 @@ class AbstractPhoneConversation(StreamingConversation[TelephonyOutputDeviceType]
         agent_config: AgentConfig,
         transcriber_config: TranscriberConfig,
         synthesizer_config: SynthesizerConfig,
+        amd_config: AMDConfig,
         agent_factory: AbstractAgentFactory,
         transcriber_factory: AbstractTranscriberFactory,
         synthesizer_factory: AbstractSynthesizerFactory,
@@ -62,6 +64,7 @@ class AbstractPhoneConversation(StreamingConversation[TelephonyOutputDeviceType]
             transcriber_factory.create_transcriber(transcriber_config),
             agent_factory.create_agent(agent_config),
             synthesizer_factory.create_synthesizer(synthesizer_config),
+            amd_config=amd_config,
             conversation_id=conversation_id,
             events_manager=events_manager,
             speed_coefficient=speed_coefficient,
