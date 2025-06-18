@@ -39,7 +39,6 @@ from vocode.streaming.agent.base_agent import (
 from vocode.streaming.agent.chat_gpt_agent import ChatGPTAgent
 from vocode.streaming.constants import (
     ALLOWED_IDLE_TIME,
-    CHECK_HUMAN_PRESENT_MESSAGE_CHOICES,
     TEXT_TO_SPEECH_CHUNK_SIZE_SECONDS,
 )
 from vocode.streaming.models.amd import AMDConfig
@@ -234,14 +233,17 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
                 return
             # if voicemail was detected previously, ignore further human input
             if self.amd_triggered:
-                logger.info(f"Voicemail was detected previously, ignoring further human input: {transcription.message}")
+                logger.info(
+                    f"Voicemail was detected previously, ignoring further human input: {transcription.message}"
+                )
                 return
             # keyword amd
             if (
                 self.conversation.amd_config
-                and self.conversation.amd_config.enabled 
-                and self.conversation.start_time is not None 
-                and time.time() - self.conversation.start_time <= self.conversation.amd_config.threshold
+                and self.conversation.amd_config.enabled
+                and self.conversation.start_time is not None
+                and time.time() - self.conversation.start_time
+                <= self.conversation.amd_config.threshold
             ):
                 message = transcription.message.lower()
                 for keyword in self.conversation.amd_config.keywords:
@@ -801,7 +803,11 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
                     await self.action_on_idle()
                 self.is_human_still_there = False
                 await self.send_single_message(
-                    message=BaseMessage(text=random.choice(CHECK_HUMAN_PRESENT_MESSAGE_CHOICES)),
+                    message=BaseMessage(
+                        text=random.choice(
+                            self.agent.get_agent_config().check_human_present_message_choices
+                        )
+                    ),
                 )
                 check_human_present_count += 1
             # wait till the idle time would have passed the threshold if no action occurs
@@ -1044,13 +1050,11 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
             await self.events_manager.flush()
         if self.agent.get_agent_config().end_conversation_callback_url:
             logger.debug("Executing end conversation callback")
-            asyncio_create_task(
-                self._execute_end_conversation_callback()
-            )
+            asyncio_create_task(self._execute_end_conversation_callback())
         logger.debug("Tearing down synthesizer")
         await self.synthesizer.tear_down()
         logger.debug("Terminating agent")
-        await self.agent.terminate() 
+        await self.agent.terminate()
         logger.debug("Terminating output device")
         await self.output_device.terminate()
         logger.debug("Terminating speech transcriber")
@@ -1078,7 +1082,9 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
     async def _execute_end_conversation_callback(self):
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(self.agent.get_agent_config().end_conversation_callback_url, timeout=10)
+                response = await client.post(
+                    self.agent.get_agent_config().end_conversation_callback_url, timeout=10
+                )
                 logger.debug(f"End conversation callback response: {response.status_code}")
         except Exception as e:
             logger.error(f"Error executing end conversation callback: {e}")

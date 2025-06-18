@@ -95,6 +95,7 @@ class AgentConfig(TypedModel, type=AgentType.BASE.value):  # type: ignore
     generate_responses: bool = True
     allowed_idle_time_seconds: Optional[float] = None
     num_check_human_present_times: int = 0
+    check_human_present_message_choices: Optional[List[str]] = None
     allow_agent_to_be_cut_off: bool = True
     end_conversation_on_goodbye: bool = False
     end_conversation_callback_url: Optional[str] = None
