@@ -43,27 +43,23 @@ namespace functions {
 } // namespace functions"""
 
 CHAT_GPT_MAX_TOKENS = {
-    "gpt-3.5-turbo-0613": 4050,
-    "gpt-3.5-turbo-16k-0613": 16340,
-    "gpt-3.5-turbo-16k": 16340,
-    "gpt-3.5-turbo": 16340,
-    "gpt-3.5-turbo-1106": 16340,
-    "gpt-3.5-turbo-0125": 16340,
-    "gpt-4-0314": 8150,
-    "gpt-4-32k-0314": 32700,
-    "gpt-4-0613": 8150,
-    "gpt-4-32k-0613": 32700,
-    "gpt-4-0125-preview": 127940,
-    "gpt-4-turbo": 127940,
-    "gpt-4o": 127940,
+    "gpt-4o": 127_940,
+    "gpt-4o-mini": 127_940,
+    "gpt-4.1": 999_000,
+    "gpt-4.1-mini": 999_000,
+    "gpt-4.1-nano": 999_000,
+}
+
+_ENCODING_FALLBACKS: Dict[str, str] = {
+    "gpt-4.1": "o200k_base",
+    "gpt-4.1-mini": "o200k_base",
+    "gpt-4.1-nano": "o200k_base",
 }
 
 
 def get_chat_gpt_max_tokens(model_name: str):
     if model_name.startswith("ft:"):
         model_name = model_name.split(":")[1]
-    if model_name.startswith("gpt-4o"):
-        model_name = "gpt-4o"
 
     if model_name in CHAT_GPT_MAX_TOKENS:
         return CHAT_GPT_MAX_TOKENS[model_name]
@@ -81,49 +77,27 @@ TokenizerInfo = NamedTuple(
 )
 
 
-def get_tokenizer_info(model: str) -> Optional[TokenizerInfo]:
-    if "gpt-35-turbo" in model:
-        model = "gpt-3.5-turbo"
-    elif "gpt-4o" == model:
-        model = "gpt-4o"
-    elif "gpt4" in model or "gpt-4" in model:
-        model = "gpt-4"
+def _safe_encoding_for_model(model: str) -> tiktoken.Encoding:
+    """Return a best guess `tiktoken.Encoding` for *model* without loud warnings."""
     try:
-        encoding = tiktoken.encoding_for_model(model)
+        return tiktoken.encoding_for_model(model)
     except KeyError:
-        logger.warning(f"Warning: model not found. Using cl100k_base encoding for {model}.")
-        encoding = tiktoken.get_encoding("cl100k_base")
+        override = _ENCODING_FALLBACKS.get(model)
+        if override:
+            return tiktoken.get_encoding(override)
+        logger.debug(f"Model '{model}' not found in tiktoken; using cl100k_base as approximation.")
+        return tiktoken.get_encoding("cl100k_base")
+
+
+def get_tokenizer_info(model: str) -> Optional[TokenizerInfo]:
+    encoding = _safe_encoding_for_model(model)
+
     if model in {
-        "gpt-3.5-turbo-0613",
-        "gpt-3.5-turbo-16k-0613",
-        "gpt-4-0314",
-        "gpt-4-32k-0314",
-        "gpt-4-0613",
-        "gpt-4-32k-0613",
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
     }:
-        tokens_per_message = 3
-        tokens_per_name = 1
-    elif model == "gpt-3.5-turbo-0301":
-        tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
-        tokens_per_name = -1  # if there's a name, the role is omitted
-    elif "gpt-3.5-turbo" in model:
-        logger.debug(
-            "Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613."
-        )
-        tokens_per_message = 3
-        tokens_per_name = 1
-    elif "gpt-4" in model:
-        logger.debug(
-            "Warning: gpt-4 may update over time. Returning num tokens assuming gpt-4-0613."
-        )
-        tokens_per_message = 3
-        tokens_per_name = 1
-    elif "llama" in model.lower():
-        logger.warning(
-            f"Warning: you are using a llama model with an OpenAI compatible endpoint. \
-            Llama models are not supported natively support for token counting in tiktoken. \
-            Using cl100k_base encoding for {model} as an APPROXIMATION of token usage."
-        )
         tokens_per_message = 3
         tokens_per_name = 1
     else:
@@ -136,7 +110,7 @@ def get_tokenizer_info(model: str) -> Optional[TokenizerInfo]:
     )
 
 
-def num_tokens_from_messages(messages: List[dict], model: str = "gpt-3.5-turbo-0613"):
+def num_tokens_from_messages(messages: List[dict], model: str = "gpt-4o-mini"):
     """Return the number of tokens used by a list of messages."""
     tokenizer_info = get_tokenizer_info(model)
     if tokenizer_info is None:
@@ -176,16 +150,12 @@ def tokens_from_dict(encoding: tiktoken.Encoding, d: Dict[str, Any], tokens_per_
     return num_tokens
 
 
-def num_tokens_from_functions(functions: List[dict] | None, model="gpt-3.5-turbo-0613") -> int:
+def num_tokens_from_functions(functions: List[dict] | None, model="gpt-4o-mini") -> int:
     """Return the number of tokens used by a list of functions."""
     if not functions:
         return 0
 
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        logger.warning("Warning: model not found. Using cl100k_base encoding.")
-        encoding = tiktoken.get_encoding("cl100k_base")
+    encoding = _safe_encoding_for_model(model)
 
     function_overhead = 3 + len(encoding.encode(_FUNCTION_OVERHEAD_STR))
 
