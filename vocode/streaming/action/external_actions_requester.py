@@ -107,6 +107,14 @@ class ExternalActionsRequester:
                     )
                 else:
                     raise e
+            except (httpx.ReadTimeout, httpx.TimeoutException) as e:
+                logger.error(f"[External Actions] Request timed out: {e}")
+                return ExternalActionResponse(
+                    result={
+                        "info": "The external service took too long to respond. Please try again later."
+                    },
+                    success=False,
+                )
             except ExternalActionValueError as e:
                 return ExternalActionResponse(
                     result={
