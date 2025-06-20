@@ -38,6 +38,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
 
         self.model_id = synthesizer_config.model_id
         self.voice_id = synthesizer_config.voice_id
+        self.language = synthesizer_config.language
         self.stability = synthesizer_config.stability
         self.similarity_boost = synthesizer_config.similarity_boost
         self.style = synthesizer_config.style
@@ -119,6 +120,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         return ":".join(
             (
                 "eleven_labs",
+                str(synthesizer_config.language),
                 str(synthesizer_config.voice_id),
                 str(synthesizer_config.model_id),
                 str(synthesizer_config.stability),
@@ -165,15 +167,16 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                     )
                 audio_buffer.extend(chunk)
                 chunk_queue.put_nowait(chunk)
-            
+
             if self.synthesizer_config.use_cache:
                 text = body.get("text", "")
                 if text:
                     audio_cache = await AudioCache.safe_create()
                     await audio_cache.set_audio(
+                        self.synthesizer_config.language,
                         self.get_voice_identifier(self.synthesizer_config),
                         text.strip(),
-                        bytes(audio_buffer)
+                        bytes(audio_buffer),
                     )
         except asyncio.CancelledError:
             pass

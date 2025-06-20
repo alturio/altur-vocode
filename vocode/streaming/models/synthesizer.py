@@ -123,6 +123,7 @@ class ElevenLabsSynthesizerConfig(
     api_key: Optional[str] = None
     model_id: Optional[str]
     voice_id: Optional[str] = ELEVEN_LABS_ADAM_VOICE_ID
+    language: Optional[str] = "es"
     stability: Optional[float]
     similarity_boost: Optional[float]
     style: Optional[float] = 0

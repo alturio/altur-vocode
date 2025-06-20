@@ -336,7 +336,9 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
         audio_cache = await AudioCache.safe_create()
         cache_phrase = message.cache_phrase or message.text.strip()
         audio_data = await audio_cache.get_audio(
-            self.get_voice_identifier(self.synthesizer_config), cache_phrase
+            self.synthesizer_config.language,
+            self.get_voice_identifier(self.synthesizer_config),
+            cache_phrase,
         )
         if audio_data is None:
             return None
