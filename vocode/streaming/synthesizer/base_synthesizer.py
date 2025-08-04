@@ -3,6 +3,8 @@ import audioop
 import io
 import math
 import os
+import re
+import unicodedata
 import wave
 from typing import (
     TYPE_CHECKING,
@@ -329,6 +331,49 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
         tokens = word_tokenize(message.text)
         return TreebankWordDetokenizer().detokenize(tokens[:estimated_words_spoken])
 
+    async def sanitize_message(self, message: BaseMessage) -> BaseMessage:
+        if not message.text:
+            return message
+
+        text = message.text
+
+        BREAK_RE = re.compile(
+            r'<break\s+time="(?:' r"(?:[0-2](?:\.\d{1,2})?)|" r"3(?:\.0{1,2})?" r')s"\s*/?>',
+            flags=re.IGNORECASE,
+        )
+
+        ALLOWED_PUNCT = set(". , ! ¡ ? ¿ : ; - ' \" ’".split())
+        PLACEHOLDER = re.compile(r"@@BRK\d+@@")
+
+        placeholders = {}
+
+        def _stash(m):
+            key = f"@@BRK{len(placeholders)}@@"
+            placeholders[key] = m.group(0)
+            return key
+
+        tmp = BREAK_RE.sub(_stash, text)
+
+        parts = re.split(r"(@@BRK\d+@@)", tmp)
+        out = []
+        for chunk in parts:
+            if PLACEHOLDER.fullmatch(chunk):
+                out.append(chunk)
+            else:
+                for ch in chunk:
+                    if ch.isalpha() or ch.isdigit() or ch.isspace() or ch in ALLOWED_PUNCT:
+                        out.append(ch)
+        result = "".join(out)
+
+        result = re.sub(r"\s+", " ", result).strip()
+
+        for key, tag in placeholders.items():
+            result = result.replace(key, tag)
+
+        message.text = unicodedata.normalize("NFC", result)
+
+        return message
+
     async def get_cached_audio(
         self,
         message: BaseMessage,
@@ -370,6 +415,9 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
                 message,
                 self.synthesizer_config,
             ).create_synthesis_result(chunk_size)
+
+        if isinstance(message, BaseMessage):
+            message = await self.sanitize_message(message)
 
         if self.synthesizer_config.use_cache:
             maybe_cached_audio = await self.get_cached_audio(message)
