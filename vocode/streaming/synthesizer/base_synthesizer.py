@@ -338,7 +338,7 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
         text = message.text
 
         BREAK_RE = re.compile(
-            r'<break\s+time="(?:' r"(?:[0-2](?:\.\d{1,2})?)|" r"3(?:\.0{1,2})?" r')s"\s*/?>',
+            r'<break\s+time="(?:' r"(?:[0-5]s)|" r"(?:[0-4](?:\.\d{1,2})?s)|" r"5(?:\.0{1,2})?s" r')"\s*/?>',
             flags=re.IGNORECASE,
         )
 
