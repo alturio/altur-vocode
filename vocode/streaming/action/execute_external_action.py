@@ -26,6 +26,8 @@ class ExecuteExternalActionVocodeActionConfig(
     speak_on_receive: bool
     signature_secret: str
     async_execution: bool
+    headers: Optional[Dict[str, str]] = None
+    wrap_arguments: bool = True
     
 
 class ExecuteExternalActionParameters(BaseModel):
@@ -52,6 +54,8 @@ class ExecuteExternalAction(
         action_config: ExecuteExternalActionVocodeActionConfig,
     ):
         self.description = action_config.description
+        self.headers = action_config.headers or {}
+        self.wrap_arguments = action_config.wrap_arguments
         super().__init__(
             action_config,
             quiet=not action_config.speak_on_receive,
@@ -79,14 +83,82 @@ class ExecuteExternalAction(
     def get_parameters_schema(self) -> Dict[str, Any]:
         return json.loads(self.action_config.input_schema)
 
+    def _process_parameters_by_location(
+        self, payload: Dict[str, Any]
+    ) -> tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        """Process parameters by their location (path, query, or body).
+        
+        Args:
+            payload: The full parameter payload from the LLM
+            
+        Returns:
+            Tuple of (path_params, query_params, body_params)
+        """
+        input_schema = json.loads(self.action_config.input_schema)
+        parameter_locations = input_schema.get("x-parameter-locations", {})
+        
+        path_params = {}
+        query_params = {}
+        body_params = {}
+        
+        for param_name, param_value in payload.items():
+            location = parameter_locations.get(param_name, "body")
+            
+            if location == "path":
+                path_params[param_name] = param_value
+            elif location == "query":
+                query_params[param_name] = param_value
+            else:  # Default to body
+                body_params[param_name] = param_value
+        
+        return path_params, query_params, body_params
+
+    def _build_request_url(
+        self, path_params: Dict[str, Any], query_params: Dict[str, Any]
+    ) -> str:
+        """Build the final request URL with path and query parameters.
+        
+        Args:
+            path_params: Parameters to replace in URL path template
+            query_params: Parameters to append as query string
+            
+        Returns:
+            Final URL with path parameters replaced and query params appended
+        """
+        url = self.action_config.url
+        
+        if path_params:
+            try:
+                url = url.format(**path_params)
+            except KeyError as e:
+                raise ValueError(f"Missing required path parameter: {e}")
+        
+        if query_params:
+            query_string_params = {k: str(v) for k, v in query_params.items()}
+            from urllib.parse import urlencode
+            query_string = urlencode(query_string_params)
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}{query_string}"
+        
+        return url
+
     async def send_external_action_request(
         self, action_input: ActionInput[ExecuteExternalActionParameters]
     ) -> ExternalActionResponse:
+        path_params, query_params, body_params = self._process_parameters_by_location(
+            action_input.params.payload
+        )
+        
+        request_url = self._build_request_url(path_params, query_params)
+        
         if self.action_config.async_execution:
             asyncio.create_task(
                 self.external_actions_requester.send_request(
-                    payload=action_input.params.payload,
+                    payload=body_params,
                     signature_secret=self.action_config.signature_secret,
+                    additional_headers=self.headers,
+                    url=request_url,
+                    wrap_arguments=self.wrap_arguments,
                 )
             )
             return ExternalActionResponse(
@@ -94,8 +166,11 @@ class ExecuteExternalAction(
             )
         else:
             return await self.external_actions_requester.send_request(
-                payload=action_input.params.payload,
+                payload=body_params,
                 signature_secret=self.action_config.signature_secret,
+                additional_headers=self.headers,
+                url=request_url,
+                wrap_arguments=self.wrap_arguments,
             )
 
     async def run(

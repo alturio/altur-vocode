@@ -54,8 +54,15 @@ class ExternalActionsRequester:
         additional_payload_values: Dict[str, Any] = {},
         additional_headers: Dict[str, str] = {},
         transport: httpx.AsyncHTTPTransport = httpx.AsyncHTTPTransport(retries=2),
+        url: Optional[str] = None,
+        wrap_arguments: bool = True,
     ) -> ExternalActionResponse:
-        encoded_payload = json.dumps({"arguments": payload}).encode("utf-8")
+        if wrap_arguments:
+            payload_to_send = {"arguments": payload}
+        else:
+            payload_to_send = payload
+        
+        encoded_payload = json.dumps(payload_to_send).encode("utf-8")
 
         headers = {
             "Accept": "application/json",
@@ -66,6 +73,8 @@ class ExternalActionsRequester:
             **additional_headers,
         }
 
+        request_url = url if url is not None else self.url
+        
         async with httpx.AsyncClient(
             headers=headers,
             transport=transport,
@@ -73,7 +82,7 @@ class ExternalActionsRequester:
         ) as client:
             try:
                 response = await client.post(
-                    self.url,
+                    request_url,
                     content=encoded_payload,
                 )
                 response.raise_for_status()
