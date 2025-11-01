@@ -9,6 +9,7 @@ from vocode.streaming.action.external_actions_requester import (
     ExternalActionResponse,
     ExternalActionsRequester,
 )
+from vocode.streaming.action.parameter_formatters import apply_parameter_formats
 from vocode.streaming.models.actions import ActionConfig as VocodeActionConfig
 from vocode.streaming.models.actions import ActionInput, ActionOutput, ExternalActionProcessingMode
 from vocode.streaming.models.message import BaseMessage
@@ -21,6 +22,7 @@ class ExecuteExternalActionVocodeActionConfig(
     name: str
     description: str
     url: str
+    method: str = "POST"
     input_schema: str
     speak_on_send: bool
     speak_on_receive: bool
@@ -28,6 +30,7 @@ class ExecuteExternalActionVocodeActionConfig(
     async_execution: bool
     headers: Optional[Dict[str, str]] = None
     wrap_arguments: bool = True
+    extra_context: Dict[str, Any] = {}
     
 
 class ExecuteExternalActionParameters(BaseModel):
@@ -53,9 +56,11 @@ class ExecuteExternalAction(
         self,
         action_config: ExecuteExternalActionVocodeActionConfig,
     ):
+        self.method = action_config.method
         self.description = action_config.description
         self.headers = action_config.headers or {}
         self.wrap_arguments = action_config.wrap_arguments
+        self.extra_context = action_config.extra_context or {}
         super().__init__(
             action_config,
             quiet=not action_config.speak_on_receive,
@@ -82,6 +87,12 @@ class ExecuteExternalAction(
 
     def get_parameters_schema(self) -> Dict[str, Any]:
         return json.loads(self.action_config.input_schema)
+
+    def _apply_parameter_formatting(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        input_schema = json.loads(self.action_config.input_schema)
+        param_formats = input_schema.get("x-formats", {})
+        
+        return apply_parameter_formats(payload, param_formats, self.extra_context)
 
     def _process_parameters_by_location(
         self, payload: Dict[str, Any]
@@ -145,8 +156,12 @@ class ExecuteExternalAction(
     async def send_external_action_request(
         self, action_input: ActionInput[ExecuteExternalActionParameters]
     ) -> ExternalActionResponse:
-        path_params, query_params, body_params = self._process_parameters_by_location(
+        formatted_payload = self._apply_parameter_formatting(
             action_input.params.payload
+        )
+        
+        path_params, query_params, body_params = self._process_parameters_by_location(
+            formatted_payload
         )
         
         request_url = self._build_request_url(path_params, query_params)
@@ -158,6 +173,7 @@ class ExecuteExternalAction(
                     signature_secret=self.action_config.signature_secret,
                     additional_headers=self.headers,
                     url=request_url,
+                    method=self.method,
                     wrap_arguments=self.wrap_arguments,
                 )
             )
@@ -170,6 +186,7 @@ class ExecuteExternalAction(
                 signature_secret=self.action_config.signature_secret,
                 additional_headers=self.headers,
                 url=request_url,
+                method=self.method,
                 wrap_arguments=self.wrap_arguments,
             )
 

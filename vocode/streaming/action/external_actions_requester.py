@@ -55,6 +55,7 @@ class ExternalActionsRequester:
         additional_headers: Dict[str, str] = {},
         transport: httpx.AsyncHTTPTransport = httpx.AsyncHTTPTransport(retries=2),
         url: Optional[str] = None,
+        method: str = "POST",
         wrap_arguments: bool = True,
     ) -> ExternalActionResponse:
         if wrap_arguments:
@@ -81,9 +82,10 @@ class ExternalActionsRequester:
             timeout=10,
         ) as client:
             try:
-                response = await client.post(
-                    request_url,
-                    content=encoded_payload,
+                response = await client.request(
+                    method=method.upper(),
+                    url=request_url,
+                    content=encoded_payload if method.upper() in ["POST", "PUT", "PATCH"] else None,
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -139,21 +141,30 @@ class ExternalActionsRequester:
         digest = hmac.new(signature_as_bytes, payload, hashlib.sha256).digest()
         return base64.b64encode(digest).decode()
 
-    def _validate_response(self, response: Dict[str, Any]) -> ExternalActionResponse:
-        if "result" not in response:
-            raise ExternalActionValueError("Invalid response format: missing 'result'")
-        if not isinstance(response["result"], dict):
-            raise ExternalActionValueError(
-                "Invalid response format: 'agent_message' must be a key value map"
-            )
-        if "agent_message" in response and not isinstance(
-            response["agent_message"], str
-        ):
-            raise ExternalActionValueError(
-                "Invalid response format: 'agent_message' must be a string"
-            )
+    def _validate_response(self, response: Any) -> ExternalActionResponse:
+        agent_message = None
+        if isinstance(response, dict) and "agent_message" in response:
+            agent_message = response.get("agent_message")
+            if agent_message is not None and not isinstance(agent_message, str):
+                raise ExternalActionValueError(
+                    "Invalid response format: 'agent_message' must be a string"
+                )
+        
+        if isinstance(response, dict) and "result" in response:
+            result = response["result"]
+            if not isinstance(result, dict):
+                raise ExternalActionValueError(
+                    "Invalid response format: 'result' must be a key value map"
+                )
+        elif isinstance(response, dict):
+            result = {k: v for k, v in response.items() if k != "agent_message"}
+            if not result:
+                result = {}
+        else:
+            result = {"value": response}
+        
         return ExternalActionResponse(
-            result=response["result"],
-            agent_message=response.get("agent_message"),
+            result=result,
+            agent_message=agent_message,
             success=True,
         )

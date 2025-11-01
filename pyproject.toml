@@ -28,6 +28,7 @@ pydantic = "^2.7.2"
 pydantic-settings = "^2.3.0"
 pydub = "^0.25.1"
 pyht = "^0.0.28"
+pytz = "^2024.1"
 redis = "^5.0.4"
 requests = "^2.32.3"
 sentry-sdk = { extras = ["fastapi"], version = "^2.3.1" }
