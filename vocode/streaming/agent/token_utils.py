@@ -48,12 +48,18 @@ CHAT_GPT_MAX_TOKENS = {
     "gpt-4.1": 999_000,
     "gpt-4.1-mini": 999_000,
     "gpt-4.1-nano": 999_000,
+    "gpt-5": 400_000,
+    "gpt-5-mini": 400_000,
+    "gpt-5-nano": 400_000,
 }
 
 _ENCODING_FALLBACKS: Dict[str, str] = {
     "gpt-4.1": "o200k_base",
     "gpt-4.1-mini": "o200k_base",
     "gpt-4.1-nano": "o200k_base",
+    "gpt-5": "o200k_base",
+    "gpt-5-mini": "o200k_base",
+    "gpt-5-nano": "o200k_base",
 }
 
 
@@ -97,6 +103,9 @@ def get_tokenizer_info(model: str) -> Optional[TokenizerInfo]:
         "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-nano",
     }:
         tokens_per_message = 3
         tokens_per_name = 1

@@ -96,15 +96,22 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
 
         parameters: Dict[str, Any] = {
             "messages": messages,
-            "max_tokens": self.agent_config.max_tokens,
             "temperature": self.agent_config.temperature,
         }
 
         if is_azure:
             assert self.agent_config.azure_params is not None
-            parameters["model"] = self.agent_config.azure_params.deployment_name
+            model_name = self.agent_config.azure_params.deployment_name
+            parameters["model"] = model_name
         else:
-            parameters["model"] = self.agent_config.model_name
+            model_name = self.agent_config.model_name
+            parameters["model"] = model_name
+
+        if self._is_reasoning_model(model_name):
+            parameters["max_completion_tokens"] = self.agent_config.max_tokens
+            parameters["reasoning_effort"] = "minimal"  # force to minimal for now (experimental)
+        else:
+            parameters["max_tokens"] = self.agent_config.max_tokens
 
         if use_functions and self.functions:
             parameters["functions"] = self.functions
@@ -113,6 +120,11 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
 
     def _is_azure_model(self) -> bool:
         return self.agent_config.azure_params is not None
+
+    def _is_reasoning_model(self, model_name: str) -> bool:
+        """OpenAI reasoning models require different parameters than older non-reasoning models."""
+        model_lower = model_name.lower()
+        return model_lower.startswith("gpt-5")
 
     def get_model_name_for_tokenizer(self):
         if not self.agent_config.azure_params:
