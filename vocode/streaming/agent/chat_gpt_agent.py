@@ -114,7 +114,8 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
             parameters["max_tokens"] = self.agent_config.max_tokens
 
         if use_functions and self.functions:
-            parameters["functions"] = self.functions
+            tools = [{"type": "function", "function": func} for func in self.functions]
+            parameters["tools"] = tools
 
         return parameters
 
@@ -197,6 +198,7 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
         conversation_id: str,
         is_interrupt: bool = False,
         bot_was_in_medias_res: bool = False,
+        is_tool_response: bool = False,
     ) -> AsyncGenerator[GeneratedResponse, None]:
         assert self.transcript is not None
 
@@ -231,6 +233,11 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
                 chat_parameters = self.get_chat_parameters()
         else:
             chat_parameters = self.get_chat_parameters()
+            
+        if is_tool_response:
+            logger.debug("Responding to tool result (disabling tools to prevent loops)")
+            chat_parameters = self.get_chat_parameters(use_functions=False)
+            
         chat_parameters["stream"] = True
 
         openai_chat_messages: List = chat_parameters.get("messages", [])

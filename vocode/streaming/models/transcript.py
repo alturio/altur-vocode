@@ -50,6 +50,7 @@ class ActionStart(EventLog):
     sender: Sender = Sender.ACTION_WORKER
     action_type: str
     action_input: ActionInput
+    tool_call_id: Optional[str] = None
 
     def to_string(self, include_timestamp: bool = False, include_header: bool = True):
         main_string = self.action_input.action_config.action_attempt_to_string(self.action_input)
@@ -65,6 +66,7 @@ class ActionFinish(EventLog):
     action_type: str
     action_input: ActionInput
     action_output: ActionOutput
+    tool_call_id: Optional[str] = None
 
     def to_string(self, include_timestamp: bool = False, include_header: bool = True):
         main_string = self.action_input.action_config.action_result_to_string(
@@ -213,13 +215,14 @@ class Transcript(BaseModel):
             if message.sender == Sender.HUMAN:
                 return -1 * (idx + 1), message.to_string()
 
-    def add_action_start_log(self, action_input: ActionInput, conversation_id: str):
+    def add_action_start_log(self, action_input: ActionInput, conversation_id: str, tool_call_id: Optional[str] = None):
         timestamp = time.time()
         self.event_logs.append(
             ActionStart(
                 action_input=action_input,
                 action_type=action_input.action_config.type,
                 timestamp=timestamp,
+                tool_call_id=tool_call_id,
             )
         )
         if self.events_manager is not None:
@@ -235,6 +238,7 @@ class Transcript(BaseModel):
         action_input: ActionInput,
         action_output: ActionOutput,
         conversation_id: str,
+        tool_call_id: Optional[str] = None,
     ):
         timestamp = time.time()
         self.event_logs.append(
@@ -243,6 +247,7 @@ class Transcript(BaseModel):
                 action_output=action_output,
                 action_type=action_output.action_type,
                 timestamp=timestamp,
+                tool_call_id=tool_call_id,
             )
         )
         if self.events_manager is not None:

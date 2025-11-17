@@ -49,6 +49,7 @@ async def collate_response_async(
     buffer = ""
     function_name_buffer = ""
     function_args_buffer = ""
+    function_tool_call_id = None
     is_post_period = False
     tokens_since_period = 0
     is_first = True
@@ -89,13 +90,16 @@ async def collate_response_async(
                 tokens_since_period += 1
 
         elif isinstance(token, FunctionFragment):
-            function_name_buffer += token.name
+            if token.name:
+                function_name_buffer = token.name
             function_args_buffer += token.arguments
+            if token.tool_call_id:
+                function_tool_call_id = token.tool_call_id
     to_return = buffer.strip()
     if to_return:
         yield to_return
     if function_name_buffer and get_functions:
-        yield FunctionCall(name=function_name_buffer, arguments=function_args_buffer)
+        yield FunctionCall(name=function_name_buffer, arguments=function_args_buffer, tool_call_id=function_tool_call_id)
 
 
 async def stream_response_async(
@@ -111,6 +115,7 @@ async def stream_response_async(
     buffer = ""
     function_name_buffer = ""
     function_args_buffer = ""
+    function_tool_call_id = None
     is_first = True
     async for token in gen:
         if is_first:
@@ -131,9 +136,12 @@ async def stream_response_async(
                 buffer += token
 
         elif isinstance(token, FunctionFragment):
-            function_name_buffer += token.name
+            if token.name:
+                function_name_buffer = token.name
             function_args_buffer += token.arguments
+            if token.tool_call_id:
+                function_tool_call_id = token.tool_call_id
     if buffer != "":
         yield buffer + " "
     if function_name_buffer and get_functions:
-        yield FunctionCall(name=function_name_buffer, arguments=function_args_buffer)
+        yield FunctionCall(name=function_name_buffer, arguments=function_args_buffer, tool_call_id=function_tool_call_id)

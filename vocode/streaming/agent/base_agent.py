@@ -250,15 +250,29 @@ class RespondAgent(BaseAgent[AgentConfigType]):
         agent_input: AgentInput,
     ) -> bool:
         conversation_id = agent_input.conversation_id
-        responses = self._maybe_prepend_interrupt_responses(
-            transcription=transcription,
-            responses_stream=self.generate_response(
-                transcription.message,
-                is_interrupt=transcription.is_interrupt,
-                conversation_id=conversation_id,
-                bot_was_in_medias_res=transcription.bot_was_in_medias_res,
-            ),
-        )
+        is_tool_response = isinstance(agent_input, ActionResultAgentInput)
+        
+        try:
+            responses = self._maybe_prepend_interrupt_responses(
+                transcription=transcription,
+                responses_stream=self.generate_response(
+                    transcription.message,
+                    is_interrupt=transcription.is_interrupt,
+                    conversation_id=conversation_id,
+                    bot_was_in_medias_res=transcription.bot_was_in_medias_res,
+                    is_tool_response=is_tool_response,
+                ),
+            )
+        except TypeError:  # Fallback for agents that don't support is_tool_response
+            responses = self._maybe_prepend_interrupt_responses(
+                transcription=transcription,
+                responses_stream=self.generate_response(
+                    transcription.message,
+                    is_interrupt=transcription.is_interrupt,
+                    conversation_id=conversation_id,
+                    bot_was_in_medias_res=transcription.bot_was_in_medias_res,
+                ),
+            )
         is_first_response_of_turn = True
         function_call = None
 
@@ -400,6 +414,7 @@ class RespondAgent(BaseAgent[AgentConfigType]):
                     action_input=agent_input.action_input,
                     action_output=agent_input.action_output,
                     conversation_id=agent_input.conversation_id,
+                    tool_call_id=agent_input.action_input.tool_call_id,
                 )
                 if agent_input.is_quiet:
                     # Do not generate a response to quiet actions
@@ -482,6 +497,7 @@ class RespondAgent(BaseAgent[AgentConfigType]):
             return
         action = self.action_factory.create_action(action_config)
         params = json.loads(function_call.arguments)
+        tool_call_id = function_call.tool_call_id
         user_message_tracker = None
         if "user_message" in params:
             user_message = params["user_message"]
@@ -501,7 +517,7 @@ class RespondAgent(BaseAgent[AgentConfigType]):
                     agent_response_tracker=user_message_tracker,
                 )
             )
-        action_input = self.create_action_input(action, agent_input, params, user_message_tracker)
+        action_input = self.create_action_input(action, agent_input, params, user_message_tracker, tool_call_id)
         self.enqueue_action_input(action, action_input, agent_input.conversation_id)
 
     def create_action_input(
@@ -510,6 +526,7 @@ class RespondAgent(BaseAgent[AgentConfigType]):
         agent_input: AgentInput,
         params: Dict,
         user_message_tracker: Optional[asyncio.Event] = None,
+        tool_call_id: Optional[str] = None,
     ) -> ActionInput:
         action_input: ActionInput
         if isinstance(action, VonagePhoneConversationAction):
@@ -538,6 +555,7 @@ class RespondAgent(BaseAgent[AgentConfigType]):
                 params,
                 user_message_tracker,
             )
+        action_input.tool_call_id = tool_call_id
         return action_input
 
     def enqueue_action_input(
@@ -557,6 +575,7 @@ class RespondAgent(BaseAgent[AgentConfigType]):
         self.transcript.add_action_start_log(
             action_input=action_input,
             conversation_id=conversation_id,
+            tool_call_id=action_input.tool_call_id,
         )
         self.actions_consumer.consume_nonblocking(event)
 

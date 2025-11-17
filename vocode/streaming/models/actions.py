@@ -90,6 +90,7 @@ class ActionInput(BaseModel, Generic[ParametersType]):
     conversation_id: str
     params: ParametersType
     user_message_tracker: Optional[asyncio.Event] = None
+    tool_call_id: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -98,11 +99,13 @@ class ActionInput(BaseModel, Generic[ParametersType]):
 class FunctionFragment(BaseModel):
     name: str
     arguments: str
+    tool_call_id: Optional[str] = None
 
 
 class FunctionCall(BaseModel):
     name: str
     arguments: str
+    tool_call_id: Optional[str] = None
 
 
 class EndOfTurn(BaseModel):

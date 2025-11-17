@@ -42,6 +42,8 @@ def get_openai_chat_messages_from_transcript(
     prompt_preamble: str,
 ) -> List[dict]:
     chat_messages = [{"role": "system", "content": prompt_preamble}]
+    tool_call_ids = {}
+    
     for event_log in merged_event_logs:
         if isinstance(event_log, Message):
             if len(event_log.text.strip()) == 0:
@@ -58,19 +60,31 @@ def get_openai_chat_messages_from_transcript(
             if is_phrase_based_action_event_log(event_log=event_log):
                 pass
             else:
+                tool_call_id = f"call_{event_log.action_type}_{hash(event_log.action_input.params.json()) % 1000000}"
+                tool_call_ids[(event_log.action_type, event_log.action_input.params.json())] = tool_call_id
+                
                 action_message = {
-                    "role": "assistant",
+                    "role": "assistant", 
                     "content": None,
-                    "function_call": {
-                        "name": event_log.action_type,
-                        "arguments": event_log.action_input.params.json(),
-                    },
+                    "tool_calls": [
+                        {
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": event_log.action_type,
+                                "arguments": event_log.action_input.params.json(),
+                            },
+                        }
+                    ],
                 }
                 chat_messages.append(action_message)
         elif isinstance(event_log, ActionFinish):
+            key = (event_log.action_type, event_log.action_input.params.json())
+            tool_call_id = tool_call_ids.get(key, f"call_{event_log.action_type}_{hash(event_log.to_string(include_header=False)) % 1000000}")
+            
             action_message = {
-                "role": "function",
-                "name": event_log.action_type,
+                "role": "tool",
+                "tool_call_id": tool_call_id,
                 "content": event_log.to_string(include_header=False),
             }
             chat_messages.append(action_message)
@@ -152,6 +166,8 @@ def format_openai_chat_messages_from_transcript(
 async def openai_get_tokens(
     gen: AsyncGenerator[ChatCompletionChunk, None],
 ) -> AsyncGenerator[Union[str, FunctionFragment], None]:
+    tool_calls = {}
+    
     async for event in gen:
         choices = event.choices
         if len(choices) == 0:
@@ -168,7 +184,38 @@ async def openai_get_tokens(
         if delta.content is not None:
             token = delta.content
             yield token
+        elif delta.tool_calls is not None:
+            for tool_call_chunk in delta.tool_calls:
+                index = tool_call_chunk.index
+                if index not in tool_calls:
+                    tool_calls[index] = {
+                        "id": "",
+                        "name": "",
+                        "arguments": "",
+                        "name_sent": False
+                    }
+                
+                if tool_call_chunk.id:
+                    tool_calls[index]["id"] = tool_call_chunk.id
+                
+                if tool_call_chunk.function:
+                    if tool_call_chunk.function.name:
+                        tool_calls[index]["name"] += tool_call_chunk.function.name
+                    if tool_call_chunk.function.arguments:
+                        tool_calls[index]["arguments"] += tool_call_chunk.function.arguments
+                        if index == 0:
+                            name_to_send = ""
+                            if not tool_calls[index]["name_sent"] and tool_calls[index]["name"]:
+                                name_to_send = tool_calls[index]["name"]
+                                tool_calls[index]["name_sent"] = True
+                            
+                            yield FunctionFragment(
+                                name=name_to_send,
+                                arguments=tool_call_chunk.function.arguments,
+                                tool_call_id=tool_calls[index]["id"]
+                            )
         elif delta.function_call is not None:
+            # Backward compatibility for older models
             yield FunctionFragment(
                 name=(delta.function_call.name if delta.function_call.name is not None else ""),
                 arguments=(
