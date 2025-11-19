@@ -41,34 +41,104 @@ def get_openai_chat_messages_from_transcript(
     merged_event_logs: List[EventLog],
     prompt_preamble: str,
 ) -> List[dict]:
+    """Convert transcript events to OpenAI chat messages with proper tool call handling."""
     chat_messages = [{"role": "system", "content": prompt_preamble}]
-    tool_call_ids = {}
     
+    # Ensure tool calls are paired with the correct response
+    tool_call_to_response = {}  # tool_call_id -> ActionFinish
+    action_starts_by_id = {}    # tool_call_id -> ActionStart
+    
+    # First pass: collect all ActionStart and ActionFinish events
     for event_log in merged_event_logs:
+        if isinstance(event_log, ActionStart) and not is_phrase_based_action_event_log(event_log):
+            if event_log.tool_call_id:
+                action_starts_by_id[event_log.tool_call_id] = event_log
+        elif isinstance(event_log, ActionFinish) and not is_phrase_based_action_event_log(event_log):
+            if event_log.tool_call_id:
+                tool_call_to_response[event_log.tool_call_id] = event_log
+    
+    processed_tool_calls = set()
+    
+    # Second pass: build chat messages
+    i = 0
+    while i < len(merged_event_logs):
+        event_log = merged_event_logs[i]
+        
         if isinstance(event_log, Message):
             if len(event_log.text.strip()) == 0:
+                i += 1
                 continue
-            else:
-                chat_messages.append(
-                    {
-                        "role": ("assistant" if event_log.sender == Sender.BOT else "user"),
-                        "content": event_log.to_string(include_sender=False),
-                    },
-                )
-        elif isinstance(event_log, ActionStart):
-            action_message: Dict[str, Any]
-            if is_phrase_based_action_event_log(event_log=event_log):
-                pass
-            else:
-                tool_call_id = f"call_{event_log.action_type}_{hash(event_log.action_input.params.json()) % 1000000}"
-                tool_call_ids[(event_log.action_type, event_log.action_input.params.json())] = tool_call_id
                 
-                action_message = {
-                    "role": "assistant", 
+            # Check if this bot message is associated with a tool call
+            if event_log.sender == Sender.BOT:
+                # Look ahead for an ActionStart in the next few events
+                associated_tool_calls = []
+                j = i + 1
+                while j < len(merged_event_logs) and j < i + 5:  # Look ahead
+                    next_event = merged_event_logs[j]
+                    if isinstance(next_event, ActionStart) and not is_phrase_based_action_event_log(next_event):
+                        if (next_event.tool_call_id and 
+                            next_event.tool_call_id in tool_call_to_response and
+                            next_event.tool_call_id not in processed_tool_calls):
+                            associated_tool_calls.append(next_event)
+                            processed_tool_calls.add(next_event.tool_call_id)
+                            break  # Only associate with the first tool call found
+                    elif isinstance(next_event, Message) and next_event.sender == Sender.HUMAN:
+                        break
+                    j += 1
+                
+                if associated_tool_calls:
+                    message = {
+                        "role": "assistant",
+                        "content": event_log.to_string(include_sender=False),
+                        "tool_calls": [
+                            {
+                                "id": action.tool_call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": action.action_type,
+                                    "arguments": action.action_input.params.json(),
+                                },
+                            }
+                            for action in associated_tool_calls
+                        ],
+                    }
+                    chat_messages.append(message)
+                    
+                    for action in associated_tool_calls:
+                        if action.tool_call_id in tool_call_to_response:
+                            finish_event = tool_call_to_response[action.tool_call_id]
+                            chat_messages.append({
+                                "role": "tool",
+                                "tool_call_id": action.tool_call_id,
+                                "content": finish_event.to_string(include_header=False),
+                            })
+                else:
+                    chat_messages.append({
+                        "role": "assistant",
+                        "content": event_log.to_string(include_sender=False),
+                    })
+            else:
+                chat_messages.append({
+                    "role": "user",
+                    "content": event_log.to_string(include_sender=False),
+                })
+            i += 1
+            
+        elif isinstance(event_log, ActionStart):
+            if (is_phrase_based_action_event_log(event_log) or 
+                not event_log.tool_call_id or
+                event_log.tool_call_id in processed_tool_calls):
+                i += 1
+                continue
+                
+            if event_log.tool_call_id in tool_call_to_response:
+                message = {
+                    "role": "assistant",
                     "content": None,
                     "tool_calls": [
                         {
-                            "id": tool_call_id,
+                            "id": event_log.tool_call_id,
                             "type": "function",
                             "function": {
                                 "name": event_log.action_type,
@@ -77,21 +147,25 @@ def get_openai_chat_messages_from_transcript(
                         }
                     ],
                 }
-                chat_messages.append(action_message)
-        elif isinstance(event_log, ActionFinish):
-            key = (event_log.action_type, event_log.action_input.params.json())
-            tool_call_id = tool_call_ids.get(key, f"call_{event_log.action_type}_{hash(event_log.to_string(include_header=False)) % 1000000}")
+                chat_messages.append(message)
+                processed_tool_calls.add(event_log.tool_call_id)
+                
+                finish_event = tool_call_to_response[event_log.tool_call_id]
+                chat_messages.append({
+                    "role": "tool",
+                    "tool_call_id": event_log.tool_call_id,
+                    "content": finish_event.to_string(include_header=False),
+                })
+            i += 1
             
-            action_message = {
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": event_log.to_string(include_header=False),
-            }
-            chat_messages.append(action_message)
         elif isinstance(event_log, ConferenceEvent):
             chat_messages.append(
                 {"role": "user", "content": event_log.to_string(include_sender=False)},
             )
+            i += 1
+        else:
+            i += 1
+    
     return chat_messages
 
 
@@ -143,12 +217,32 @@ def format_openai_chat_messages_from_transcript(
     num_removed_messages = 0
     while (
         context_size > get_chat_gpt_max_tokens(model_name) - LLM_AGENT_DEFAULT_MAX_TOKENS - 50
-    ):  # context limit includes the max tokens, and 50 for safety
+    ):
         if len(chat_messages) <= 1:
             logger.error(f"Prompt is too long to fit in context window, num tokens {context_size}")
             break
         num_removed_messages += 1
-        chat_messages.pop(1)
+        
+        # Remove messages more carefully to avoid breaking tool call/response pairs
+        # Find the first message that can be safely removed
+        removed = False
+        for i in range(1, len(chat_messages)):
+            msg = chat_messages[i]
+            # Skip system message and tool responses
+            if msg.get("role") == "system" or msg.get("role") == "tool":
+                continue
+            # Skip assistant messages with tool calls (need to remove with their responses)
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                continue
+            # Safe to remove this message
+            chat_messages.pop(i)
+            removed = True
+            break
+            
+        if not removed:
+            # If we couldn't find a safe message to remove, just remove from index 1
+            chat_messages.pop(1)
+            
         context_size = num_tokens_from_messages(
             messages=chat_messages,
             model=model_name,
