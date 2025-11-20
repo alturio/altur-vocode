@@ -342,7 +342,7 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
             flags=re.IGNORECASE,
         )
 
-        ALLOWED_PUNCT = set(". , ! ¡ ? ¿ : ; - ' \" ’".split())
+        ALLOWED_PUNCT = set(". , ! ¡ ? ¿ : ; - ' \" '".split())
         PLACEHOLDER = re.compile(r"@@BRK\d+@@")
 
         placeholders = {}
@@ -369,6 +369,28 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
 
         for key, tag in placeholders.items():
             result = result.replace(key, tag)
+
+        # Remove break tags from the start and end of the string
+        result = result.strip()
+        changed = True
+        while changed and result:
+            changed = False
+            # Check if starts with a break tag
+            match = BREAK_RE.match(result)
+            if match:
+                result = result[match.end():].strip()
+                changed = True
+            # Check if ends with a break tag
+            if result:
+                matches = list(BREAK_RE.finditer(result))
+                if matches and matches[-1].end() == len(result):
+                    result = result[:matches[-1].start()].strip()
+                    changed = True
+
+        text_without_breaks = BREAK_RE.sub("", result).strip()
+        if not text_without_breaks:
+            message.text = ""
+            return message
 
         message.text = unicodedata.normalize("NFC", result)
 
