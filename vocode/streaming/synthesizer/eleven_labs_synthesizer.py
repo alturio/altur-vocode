@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import re
 from typing import Optional
 
 from elevenlabs import Voice, VoiceSettings
@@ -79,6 +80,14 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         is_first_text_chunk: bool = False,
         is_sole_text_chunk: bool = False,
     ) -> SynthesisResult:
+        # Return empty generator for messages with no word characters
+        # (prevents wasted API calls for empty/whitespace/punctuation-only text)
+        if not re.search(r"\w", message.text):
+            return SynthesisResult(
+                self.empty_generator(),
+                lambda _: message.text,
+            )
+
         self.total_chars += len(message.text)
         if self.stability is not None and self.similarity_boost is not None:
             voice = Voice(
