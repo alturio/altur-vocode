@@ -18,6 +18,7 @@ from vocode.streaming.agent.openai_utils import (
 )
 from vocode.streaming.agent.streaming_utils import collate_response_async, stream_response_async
 from vocode.streaming.models.actions import FunctionCallActionTrigger
+from vocode.streaming.utils.date_utils import inject_parsed_dates
 from vocode.streaming.models.agent import ChatGPTAgentConfig
 from vocode.streaming.models.events import Sender
 from vocode.streaming.models.message import BaseMessage, BotBackchannel, LLMToken
@@ -201,6 +202,13 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
         is_tool_response: bool = False,
     ) -> AsyncGenerator[GeneratedResponse, None]:
         assert self.transcript is not None
+
+        if self.agent_config.date_parsing_enabled and not is_tool_response:
+            human_input = inject_parsed_dates(
+                human_input,
+                languages=self.agent_config.date_parsing_languages,
+                timezone=self.agent_config.date_parsing_timezone,
+            )
 
         chat_parameters = {}
         if self.agent_config.vector_db_config:
