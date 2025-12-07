@@ -14,7 +14,7 @@ WorkerInputType = TypeVar("WorkerInputType")
 # typing gets picked up properly
 
 
-def initialize_redis(retries: int = 1):
+def initialize_redis(retries: int = 1, max_connections: int = 30):
     backoff = ExponentialBackoff() if retries > 1 else NoBackoff()
     retry = Retry(backoff, retries)
     return Redis(  # type: ignore
@@ -28,6 +28,7 @@ def initialize_redis(retries: int = 1):
         ssl_cert_reqs="none",
         retry_on_error=[ConnectionError, TimeoutError],
         health_check_interval=30,
+        max_connections=max_connections,
     )
 
 
