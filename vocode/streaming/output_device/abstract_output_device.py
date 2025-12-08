@@ -24,3 +24,11 @@ class AbstractOutputDevice(AsyncWorker[InterruptibleEvent[AudioChunk]]):
     def interrupt(self):
         """Must interrupt the currently playing audio"""
         pass
+
+    async def wait_for_drain(self, timeout: float = 30.0) -> bool:
+        """Wait for the output queue to drain.
+        
+        Returns True if drained successfully, False if timeout.
+        Default implementation returns immediately, subclasses should override.
+        """
+        return True

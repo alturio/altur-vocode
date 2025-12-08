@@ -110,7 +110,7 @@ class ConversationStateManager(AbstractConversationStateManager):
         )
 
     async def terminate_conversation(self):
-        self._conversation.mark_terminated()
+        self._conversation.mark_terminated(bot_disconnect=True)
 
     def set_call_check_for_idle_paused(self, value: bool):
         if not self._conversation:

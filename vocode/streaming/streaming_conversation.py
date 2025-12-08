@@ -39,6 +39,7 @@ from vocode.streaming.agent.base_agent import (
 from vocode.streaming.agent.chat_gpt_agent import ChatGPTAgent
 from vocode.streaming.constants import (
     ALLOWED_IDLE_TIME,
+    TERMINATION_AUDIO_DRAIN_BUFFER_SECONDS,
     TEXT_TO_SPEECH_CHUNK_SIZE_SECONDS,
 )
 from vocode.streaming.models.amd import AMDConfig
@@ -691,6 +692,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
 
         self.is_human_speaking = False
         self.is_terminated = asyncio.Event()
+        self.bot_disconnect = False
         self.mark_last_action_timestamp()
 
         self.check_for_idle_task: Optional[asyncio.Task] = None
@@ -1030,10 +1032,25 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         return message_sent, cut_off
 
     def mark_terminated(self, bot_disconnect: bool = False):
+        self.bot_disconnect = bot_disconnect
         self.is_terminated.set()
 
     async def terminate(self):
-        self.mark_terminated()
+        # Only mark terminated if not already done (to preserve bot_disconnect flag)
+        if not self.is_terminated.is_set():
+            self.mark_terminated()
+        
+        # Only wait for audio drain if agent initiated the disconnect
+        if self.bot_disconnect:
+            logger.debug("Bot disconnect, waiting for audio to drain before termination")
+            drained = await self.output_device.wait_for_drain(timeout=30.0)
+            if drained:
+                logger.debug("Audio drained, adding network buffer delay")
+                await asyncio.sleep(TERMINATION_AUDIO_DRAIN_BUFFER_SECONDS)
+            else:
+                logger.debug("Audio drain timeout, proceeding with termination")
+        else:
+            logger.debug("User disconnect, skipping audio drain wait")
         await self.broadcast_interrupt()
         self.events_manager.publish_event(
             TranscriptCompleteEvent(

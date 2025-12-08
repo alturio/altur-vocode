@@ -24,6 +24,7 @@ class RateLimitInterruptionsOutputDevice(AbstractOutputDevice):
         super().__init__(sampling_rate, audio_encoding)
         self.per_chunk_allowance_seconds = per_chunk_allowance_seconds
         self.call_id = call_id
+        self._is_processing = False
 
     async def _run_loop(self):
         while True:
@@ -33,12 +34,14 @@ class RateLimitInterruptionsOutputDevice(AbstractOutputDevice):
             except asyncio.CancelledError:
                 return
 
+            self._is_processing = True
             self.interruptible_event = item
             audio_chunk = item.payload
 
             if item.is_interrupted():
                 audio_chunk.on_interrupt()
                 audio_chunk.state = ChunkState.INTERRUPTED
+                self._is_processing = False
                 continue
 
             speech_length_seconds = (len(audio_chunk.data)) / get_chunk_size_per_second(
@@ -58,6 +61,20 @@ class RateLimitInterruptionsOutputDevice(AbstractOutputDevice):
                 ),
             )
             self.interruptible_event.is_interruptible = False
+            self._is_processing = False
+
+    async def wait_for_drain(self, timeout: float = 30.0) -> bool:
+        """Wait for the output queue to drain and current processing to complete.
+        
+        Returns True if drained successfully, False if timeout.
+        """
+        start_time = time.time()
+        while True:
+            if self._input_queue.empty() and not self._is_processing:
+                return True
+            if time.time() - start_time > timeout:
+                return False
+            await asyncio.sleep(0.1)
 
     @abstractmethod
     async def play(self, chunk: bytes, call_id: str | None = None):
