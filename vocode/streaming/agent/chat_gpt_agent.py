@@ -110,7 +110,7 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
 
         if self._is_reasoning_model(model_name):
             parameters["max_completion_tokens"] = self.agent_config.max_tokens
-            parameters["reasoning_effort"] = "minimal"  # force to minimal for now (experimental)
+            parameters["reasoning_effort"] = "none"  # force to none (no reasoning for latency reduction)
         else:
             parameters["max_tokens"] = self.agent_config.max_tokens
 
