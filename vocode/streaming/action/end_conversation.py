@@ -55,7 +55,7 @@ class EndConversation(
         super().__init__(
             action_config,
             quiet=True,
-            should_respond="never",
+            should_respond="sometimes",
             is_interruptible=False,
         )
 
