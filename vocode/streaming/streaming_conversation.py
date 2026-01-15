@@ -129,6 +129,7 @@ BACKCHANNEL_PATTERNS = [
     "como no",
     "muy bien",
 ]
+MEDIUM_INTERRUPT_SENSITIVITY_BACKCHANNEL_UTTERANCE_LENGTH_THRESHOLD = 2
 LOW_INTERRUPT_SENSITIVITY_BACKCHANNEL_UTTERANCE_LENGTH_THRESHOLD = 3
 
 
@@ -202,13 +203,15 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
             num_words = len(transcription.message.strip().split())
             sensitivity = self.conversation.agent.get_agent_config().interrupt_sensitivity
 
-            # High sensitivity: any word interrupts (nothing is a backchannel)
-            if sensitivity == "high" and num_words >= 1:
-                logger.info(f"High interrupt sensitivity; {num_words} word(s) not a backchannel")
-                return False
+            # High sensitivity: only ignore backchannel patterns, any other word interrupts
+            if sensitivity == "high":
+                cleaned = re.sub(r"[^\w\s]", "", transcription.message).strip().lower()
+                return any(re.fullmatch(regex, cleaned) for regex in BACKCHANNEL_PATTERNS)
 
-            # Medium sensitivity: only ignore known backchannel patterns
+            # Medium sensitivity: ignore short utterances (≤2 words) OR backchannel patterns
             if sensitivity == "medium":
+                if num_words <= MEDIUM_INTERRUPT_SENSITIVITY_BACKCHANNEL_UTTERANCE_LENGTH_THRESHOLD:
+                    return True
                 cleaned = re.sub(r"[^\w\s]", "", transcription.message).strip().lower()
                 return any(re.fullmatch(regex, cleaned) for regex in BACKCHANNEL_PATTERNS)
 
