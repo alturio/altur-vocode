@@ -37,7 +37,7 @@ GROQ_LLAMA3_70B_MODEL_NAME = "llama3-70b-8192"
 GROQ_MIXTRAL_8X7B_MODEL_NAME = "mixtral-8x7b-32768"
 GROQ_GEMMA_7B_MODEL_NAME = "gemma-7b-it"
 
-InterruptSensitivity = Literal["low", "high"]
+InterruptSensitivity = Literal["low", "medium", "high"]
 
 
 class AgentType(str, Enum):

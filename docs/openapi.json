@@ -3754,7 +3754,7 @@
       },
       "InterruptSensitivity": {
         "type": "string",
-        "enum": ["low", "high"],
+        "enum": ["low", "medium", "high"],
         "title": "InterruptSensitivity"
       },
       "Language": {

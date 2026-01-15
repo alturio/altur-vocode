@@ -84,6 +84,7 @@ from vocode.utils.sentry_utils import (
 )
 
 BACKCHANNEL_PATTERNS = [
+    # English
     r"m+-?hm+",
     r"m+",
     r"oh+",
@@ -105,6 +106,28 @@ BACKCHANNEL_PATTERNS = [
     "thats right",
     r"yeah+",
     "makes sense",
+    # Spanish
+    r"si+",
+    r"aja+",
+    r"aja+",
+    "ok",
+    "okey",
+    r"bueno( bueno)*",  # bueno, bueno bueno, bueno bueno bueno, etc.
+    r"si+ bueno( bueno)*",  # si bueno, sí bueno bueno, etc.
+    "claro",
+    "entiendo",
+    "ya",
+    "vale",
+    "orale",
+    "andale",
+    "exacto",
+    "correcto",
+    "asi es",
+    "por supuesto",
+    "de acuerdo",
+    "esta bien",
+    "como no",
+    "muy bien",
 ]
 LOW_INTERRUPT_SENSITIVITY_BACKCHANNEL_UTTERANCE_LENGTH_THRESHOLD = 3
 
@@ -177,13 +200,19 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
 
         def is_transcription_backchannel(self, transcription: Transcription):
             num_words = len(transcription.message.strip().split())
-            if (
-                self.conversation.agent.get_agent_config().interrupt_sensitivity == "high"
-                and num_words >= 1
-            ):
+            sensitivity = self.conversation.agent.get_agent_config().interrupt_sensitivity
+
+            # High sensitivity: any word interrupts (nothing is a backchannel)
+            if sensitivity == "high" and num_words >= 1:
                 logger.info(f"High interrupt sensitivity; {num_words} word(s) not a backchannel")
                 return False
 
+            # Medium sensitivity: only ignore known backchannel patterns
+            if sensitivity == "medium":
+                cleaned = re.sub(r"[^\w\s]", "", transcription.message).strip().lower()
+                return any(re.fullmatch(regex, cleaned) for regex in BACKCHANNEL_PATTERNS)
+
+            # Low sensitivity: ignore short utterances OR backchannel patterns
             if num_words <= LOW_INTERRUPT_SENSITIVITY_BACKCHANNEL_UTTERANCE_LENGTH_THRESHOLD:
                 return True
             cleaned = re.sub(r"[^\w\s]", "", transcription.message).strip().lower()

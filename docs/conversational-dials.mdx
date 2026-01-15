@@ -14,14 +14,14 @@ These parameters can be customized via the `create` and `update` agent APIs.
 
 Vocode phone agents are designed to handle interruptions from the humans, and the `interrupt_sensitivity` parameter controls how sensitive the bot is to these interruptions.
 
-Interrupt sensitivity has two options: **low** (default) and **high**. Low sensitivity makes the bot ignore backchannels (e.g. "sure", "uh-huh") while the bot is speaking.
-High sensitivity makes the agent treat any word from the human as an interruption.
+Interrupt sensitivity has three options: **low** (default), **medium**, and **high**.
 
 In summary:
-- **Possible values:** low, high
+- **Possible values:** low, medium, high
 - **Default value:** low
-- low = ignore non-interrupting words
-- high = stop at any word
+- **low** = ignore short utterances (≤3 words) and backchannel phrases (e.g. "sure", "uh-huh")
+- **medium** = only ignore known backchannel phrases, but short meaningful words like "wait" will interrupt
+- **high** = any word from the human triggers an interruption
 
 ## Endpointing Sensitivity
 

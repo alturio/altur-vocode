@@ -31,7 +31,7 @@ Endpointing is highly use-case specific - building a realistic experience for th
 
 # Interruptions
 
-When the AI speaks in a `StreamingConversation`, it can be interrupted by the user. `AgentConfig` itself provides a parameter called `interrupt_sensitivity` that can be used to control how sensitive the AI is to interruptions. Interrupt sensitivity has two options: low (default) and high. Low sensitivity makes the bot ignore backchannels (e.g. “sure”, “uh-huh”) while the bot is speaking. High sensitivity makes the agent treat any word from the human as an interruption.
+When the AI speaks in a `StreamingConversation`, it can be interrupted by the user. `AgentConfig` itself provides a parameter called `interrupt_sensitivity` that can be used to control how sensitive the AI is to interruptions. Interrupt sensitivity has three options: low (default), medium, and high. Low sensitivity makes the bot ignore short utterances (≤3 words) and backchannels (e.g. "sure", "uh-huh") while the bot is speaking. Medium sensitivity only ignores known backchannel phrases but allows short meaningful words like "wait" to interrupt. High sensitivity makes the agent treat any word from the human as an interruption.
 
 The implementation of this configuration is in `StreamingConversation.TranscriptionsWorker` - in order to make this work well, you may need to fork Vocode and override this behavior, but it provides a good starting place for most use-cases.
 
