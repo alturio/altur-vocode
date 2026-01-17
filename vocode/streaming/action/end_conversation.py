@@ -7,10 +7,7 @@ from vocode.streaming.action.base_action import BaseAction
 from vocode.streaming.models.actions import ActionConfig as VocodeActionConfig
 from vocode.streaming.models.actions import ActionInput, ActionOutput
 
-_END_CONVERSATION_ACTION_DESCRIPTION = """
-Ends the current conversation; use this when we should hang up. Use this
-when: your instructions indicate the call should finish, and there are no further objectives
-to complete."""
+_END_CONVERSATION_ACTION_DESCRIPTION = "Hangs up the call. Use this tool when your instructions indicate you must hang up the call."
 
 
 class EndConversationParameters(BaseModel):
