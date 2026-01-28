@@ -98,7 +98,7 @@ class BaseAction(Generic[ActionConfigType, ParametersType, ResponseType]):  # ty
     def _user_message_param_info(self):
         return {
             "type": "string",
-            "description": """A message to reply to the user with BEFORE we make the function call.
+            "description": """A message to say to the user with BEFORE we make the function call.
                     Essentially a live response informing them that the function is about to happen.
-                    Eg Let me check the weather in San Francisco CA for you """,
+                    E.g. Que tenga buen día, hasta luego""",
         }
