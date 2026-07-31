@@ -9,6 +9,11 @@ from vocode.streaming.models.actions import ActionInput, ActionOutput
 
 _END_CONVERSATION_ACTION_DESCRIPTION = "Hangs up the call. Use this tool when your instructions indicate you must hang up the call."
 
+_END_CONVERSATION_PRERECORDED_AUDIO_SUFFIX = (
+    " A prerecorded audio message will also play right after, so do not "
+    "repeat or announce it."
+)
+
 
 class EndConversationParameters(BaseModel):
     pass
@@ -21,6 +26,8 @@ class EndConversationResponse(BaseModel):
 class EndConversationVocodeActionConfig(
     VocodeActionConfig, type="action_end_conversation"  # type: ignore
 ):
+    has_prerecorded_audio: bool = False
+
     def action_attempt_to_string(self, input: ActionInput) -> str:
         assert isinstance(input.params, EndConversationParameters)
         return "Attempting to end conversation"
@@ -49,6 +56,9 @@ class EndConversation(
         self,
         action_config: EndConversationVocodeActionConfig,
     ):
+        self.description = _END_CONVERSATION_ACTION_DESCRIPTION
+        if action_config.has_prerecorded_audio:
+            self.description += _END_CONVERSATION_PRERECORDED_AUDIO_SUFFIX
         super().__init__(
             action_config,
             quiet=True,
