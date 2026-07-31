@@ -110,9 +110,17 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
 
         if self._is_reasoning_model(model_name):
             parameters["max_completion_tokens"] = self.agent_config.max_tokens
-            parameters["reasoning_effort"] = "minimal"  # force to minimal for now (experimental)
+            if use_functions and self.functions and model_name.lower().startswith("gpt-5.6"):
+                parameters["reasoning_effort"] = "none"
+            elif self.agent_config.reasoning_effort is not None:
+                parameters["reasoning_effort"] = self.agent_config.reasoning_effort
         else:
             parameters["max_tokens"] = self.agent_config.max_tokens
+
+        if self.agent_config.prompt_cache_key:
+            parameters["prompt_cache_key"] = self.agent_config.prompt_cache_key
+        if self.agent_config.prompt_cache_retention:
+            parameters["prompt_cache_retention"] = self.agent_config.prompt_cache_retention
 
         if use_functions and self.functions:
             tools = [{"type": "function", "function": func} for func in self.functions]

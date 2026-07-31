@@ -69,6 +69,8 @@ def get_chat_gpt_max_tokens(model_name: str):
 
     if model_name in CHAT_GPT_MAX_TOKENS:
         return CHAT_GPT_MAX_TOKENS[model_name]
+    if model_name.startswith("gpt-5"):
+        return CHAT_GPT_MAX_TOKENS["gpt-5"]
 
     return 4050
 
@@ -91,6 +93,8 @@ def _safe_encoding_for_model(model: str) -> tiktoken.Encoding:
         override = _ENCODING_FALLBACKS.get(model)
         if override:
             return tiktoken.get_encoding(override)
+        if model.startswith("gpt-5"):
+            return tiktoken.get_encoding("o200k_base")
         logger.debug(f"Model '{model}' not found in tiktoken; using cl100k_base as approximation.")
         return tiktoken.get_encoding("cl100k_base")
 
@@ -98,14 +102,11 @@ def _safe_encoding_for_model(model: str) -> tiktoken.Encoding:
 def get_tokenizer_info(model: str) -> Optional[TokenizerInfo]:
     encoding = _safe_encoding_for_model(model)
 
-    if model in {
+    if model.startswith("gpt-5") or model in {
         "gpt-4o-mini",
         "gpt-4.1",
         "gpt-4.1-mini",
         "gpt-4.1-nano",
-        "gpt-5",
-        "gpt-5-mini",
-        "gpt-5-nano",
     }:
         tokens_per_message = 3
         tokens_per_name = 1

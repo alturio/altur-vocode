@@ -45,6 +45,7 @@ class AgentType(str, Enum):
     LLM = "agent_llm"
     CHAT_GPT_ALPHA = "agent_chat_gpt_alpha"
     CHAT_GPT = "agent_chat_gpt"
+    GEMINI = "agent_gemini"
     ANTHROPIC = "agent_anthropic"
     CHAT_VERTEX_AI = "agent_chat_vertex_ai"
     ECHO = "agent_echo"
@@ -125,6 +126,11 @@ class ChatGPTAgentConfig(AgentConfig, type=AgentType.CHAT_GPT.value):  # type: i
     prompt_preamble: str
     model_name: str = CHAT_GPT_AGENT_DEFAULT_MODEL_NAME
     base_url_override: Optional[str] = None
+    prompt_cache_key: Optional[str] = None
+    prompt_cache_retention: Optional[str] = None
+    reasoning_effort: Optional[
+        Literal["none", "low", "medium", "high", "xhigh"]
+    ] = None
     temperature: float = LLM_AGENT_DEFAULT_TEMPERATURE
     max_tokens: int = LLM_AGENT_DEFAULT_MAX_TOKENS
     azure_params: Optional[AzureOpenAIConfig] = None
@@ -134,6 +140,18 @@ class ChatGPTAgentConfig(AgentConfig, type=AgentType.CHAT_GPT.value):  # type: i
     backchannel_probability: float = 0.7
     first_response_filler_message: Optional[str] = None
     llm_fallback: Optional[LLMFallback] = None
+    date_parsing_enabled: bool = False
+    date_parsing_languages: Optional[List[str]] = None
+    date_parsing_timezone: Optional[str] = None
+
+
+class GeminiAgentConfig(AgentConfig, type=AgentType.GEMINI.value):  # type: ignore
+    google_api_key: Optional[str] = None
+    prompt_preamble: str
+    model_name: str
+    temperature: Optional[float] = None
+    thinking_level: Optional[Literal["minimal", "low", "medium", "high"]] = None
+    max_tokens: int = LLM_AGENT_DEFAULT_MAX_TOKENS
     date_parsing_enabled: bool = False
     date_parsing_languages: Optional[List[str]] = None
     date_parsing_timezone: Optional[str] = None
