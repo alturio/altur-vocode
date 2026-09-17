@@ -1,6 +1,6 @@
-import os
-import json
 import base64
+import json
+import os
 from typing import Optional
 
 import numpy as np
@@ -8,14 +8,15 @@ from fastapi import WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
-from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.agent import AgentConfig
+from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.events import PhoneCallConnectedEvent
 from vocode.streaming.models.synthesizer import SynthesizerConfig
-from vocode.streaming.models.telephony import PhoneCallDirection, AlturConfig
+from vocode.streaming.models.telephony import AlturConfig, PhoneCallDirection
 from vocode.streaming.models.transcriber import TranscriberConfig
 from vocode.streaming.output_device.altur_output_device import AlturOutputDevice
 from vocode.streaming.synthesizer.abstract_factory import AbstractSynthesizerFactory
+from vocode.streaming.telephony.client.altur_auth import altur_service_auth
 from vocode.streaming.telephony.client.altur_client import AlturClient
 from vocode.streaming.telephony.config_manager.base_config_manager import (
     BaseConfigManager,
@@ -78,6 +79,7 @@ class AlturPhoneConversation(AbstractPhoneConversation[AlturOutputDevice]):
             synthesizer_factory=synthesizer_factory,
         )
         self.altur_config = altur_config
+        self._callback_auth = altur_service_auth
         self.telephony_client = AlturClient(
             base_url=self.base_url,
             maybe_altur_config=self.altur_config,

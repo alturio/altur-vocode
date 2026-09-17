@@ -2,7 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import httpx
 from loguru import logger
@@ -44,8 +44,11 @@ class ExternalActionResponse(BaseModel):
 
 
 class ExternalActionsRequester:
-    def __init__(self, url: str) -> None:
+    def __init__(
+        self, url: str, auth: Optional[Callable[[httpx.Request], httpx.Request]] = None
+    ) -> None:
         self.url = url
+        self._auth = auth
 
     async def send_request(
         self,
@@ -77,6 +80,8 @@ class ExternalActionsRequester:
         request_url = url if url is not None else self.url
         
         async with httpx.AsyncClient(
+            auth=self._auth,
+            follow_redirects=False,
             headers=headers,
             transport=transport,
             timeout=10,

@@ -41,6 +41,7 @@ def action_config() -> dict:
         "input_schema": json.dumps(ACTION_INPUT_SCHEMA),
         "speak_on_send": True,
         "speak_on_receive": True,
+        "async_execution": False,
         "signature_secret": base64.b64encode(os.urandom(32)).decode(),
     }
 

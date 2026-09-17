@@ -1,5 +1,5 @@
-import json
 import asyncio
+import json
 from typing import Any, Dict, Optional, Type
 
 from pydantic.v1 import BaseModel
@@ -11,8 +11,13 @@ from vocode.streaming.action.external_actions_requester import (
 )
 from vocode.streaming.action.parameter_formatters import apply_parameter_formats
 from vocode.streaming.models.actions import ActionConfig as VocodeActionConfig
-from vocode.streaming.models.actions import ActionInput, ActionOutput, ExternalActionProcessingMode
+from vocode.streaming.models.actions import (
+    ActionInput,
+    ActionOutput,
+    ExternalActionProcessingMode,
+)
 from vocode.streaming.models.message import BaseMessage
+from vocode.streaming.telephony.client.altur_auth import altur_service_auth
 
 
 class ExecuteExternalActionVocodeActionConfig(
@@ -29,6 +34,7 @@ class ExecuteExternalActionVocodeActionConfig(
     signature_secret: str
     async_execution: bool
     headers: Optional[Dict[str, str]] = None
+    altur_auth: bool = False
     wrap_arguments: bool = True
     extra_context: Dict[str, Any] = {}
     
@@ -67,7 +73,10 @@ class ExecuteExternalAction(
             should_respond="always" if action_config.speak_on_send else "never",
             is_interruptible=False,
         )
-        self.external_actions_requester = ExternalActionsRequester(url=action_config.url)
+        self.external_actions_requester = ExternalActionsRequester(
+            url=action_config.url,
+            auth=altur_service_auth if action_config.altur_auth else None,
+        )
 
     def _user_message_param_info(self):
         return {

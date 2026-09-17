@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import httpx
 import asyncio
 import queue
 import random
@@ -12,15 +11,14 @@ from typing import (
     Any,
     Awaitable,
     Callable,
-    Generic,
     Iterator,
     List,
     Optional,
     Tuple,
-    TypeVar,
     Union,
 )
 
+import httpx
 import sentry_sdk
 from loguru import logger
 from sentry_sdk.tracing import Span
@@ -28,7 +26,6 @@ from sentry_sdk.tracing import Span
 from vocode import conversation_id as ctx_conversation_id
 from vocode.streaming.action.worker import ActionsWorker
 from vocode.streaming.agent.base_agent import (
-    AgentInput,
     AgentResponse,
     AgentResponseFillerAudio,
     AgentResponseMessage,
@@ -36,26 +33,36 @@ from vocode.streaming.agent.base_agent import (
     BaseAgent,
     TranscriptionAgentInput,
 )
-from vocode.streaming.agent.chat_gpt_agent import ChatGPTAgent
 from vocode.streaming.constants import (
     ALLOWED_IDLE_TIME,
     TERMINATION_AUDIO_DRAIN_BUFFER_SECONDS,
     TEXT_TO_SPEECH_CHUNK_SIZE_SECONDS,
 )
-from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.actions import EndOfTurn
 from vocode.streaming.models.agent import FillerAudioConfig
+from vocode.streaming.models.amd import AMDConfig
 from vocode.streaming.models.events import Sender
-from vocode.streaming.models.message import BaseMessage, BotBackchannel, LLMToken, SilenceMessage
+from vocode.streaming.models.message import (
+    BaseMessage,
+    BotBackchannel,
+    LLMToken,
+    SilenceMessage,
+)
 from vocode.streaming.models.transcriber import TranscriberConfig, Transcription
-from vocode.streaming.models.transcript import Message, Transcript, TranscriptCompleteEvent
+from vocode.streaming.models.transcript import (
+    Message,
+    Transcript,
+    TranscriptCompleteEvent,
+)
 from vocode.streaming.output_device.audio_chunk import AudioChunk, ChunkState
 from vocode.streaming.synthesizer.base_synthesizer import (
     BaseSynthesizer,
     FillerAudio,
     SynthesisResult,
 )
-from vocode.streaming.synthesizer.input_streaming_synthesizer import InputStreamingSynthesizer
+from vocode.streaming.synthesizer.input_streaming_synthesizer import (
+    InputStreamingSynthesizer,
+)
 from vocode.streaming.transcriber.base_transcriber import BaseTranscriber
 from vocode.streaming.transcriber.deepgram_transcriber import DeepgramTranscriber
 from vocode.streaming.utils import (
@@ -660,6 +667,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         self.synthesis_enabled = True
 
         self.amd_config = amd_config
+        self._callback_auth = None
 
         self.interruptible_events: queue.Queue[InterruptibleEvent] = queue.Queue()
         self.interruptible_event_factory = self.QueueingInterruptibleEventFactory(conversation=self)
@@ -1130,17 +1138,18 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
 
     async def _execute_end_conversation_callback(self):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(auth=self._callback_auth, follow_redirects=False) as client:
                 response = await client.post(
                     self.agent.get_agent_config().end_conversation_callback_url, timeout=10
                 )
+                response.raise_for_status()
                 logger.debug(f"End conversation callback response: {response.status_code}")
         except Exception as e:
             logger.error(f"Error executing end conversation callback: {e}")
 
     async def _send_voicemail_event(self):
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(auth=self._callback_auth, follow_redirects=False) as client:
                 body = {
                     "arguments": {
                         "answered_by": "machine",
@@ -1148,6 +1157,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
                     }
                 }
                 response = await client.post(self.amd_config.callback_url, json=body, timeout=10)
+                response.raise_for_status()
                 logger.debug(f"Voicemail callback response: {response.status_code}")
         except Exception as e:
             logger.error(f"Error sending voicemail event: {e}")
