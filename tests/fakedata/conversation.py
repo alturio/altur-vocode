@@ -129,6 +129,7 @@ def create_fake_streaming_conversation(
         transcriber=transcriber,
         agent=agent,
         synthesizer=synthesizer,
+        amd_config=None,
         speed_coefficient=speed_coefficient,
         conversation_id=conversation_id,
         events_manager=events_manager,

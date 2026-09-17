@@ -601,7 +601,8 @@ async def test_streaming_conversation_pipeline(
         agent=EchoAgent(
             EchoAgentConfig(initial_message=BaseMessage(text="Hi there")),
         ),
-        synthesizer=TestSynthesizer(TestSynthesizerConfig.from_output_device(output_device)),
+        synthesizer=TestSynthesizer(TestSynthesizerConfig.from_output_device(output_device, use_cache=False)),
+        amd_config=None,
     )
     await streaming_conversation.start()
     await streaming_conversation.initial_message_tracker.wait()
