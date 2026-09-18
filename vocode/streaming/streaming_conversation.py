@@ -742,6 +742,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         self.current_transcription_is_interrupt: bool = False
 
         self.initial_message_tracker = asyncio.Event()
+        self.initial_message_task: Optional[asyncio.Task] = None
 
         # tracing
         self.start_time: Optional[float] = None
@@ -784,7 +785,7 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         self.agent.start()
         initial_message = self.agent.get_agent_config().initial_message
         if initial_message:
-            asyncio_create_task(
+            self.initial_message_task = asyncio_create_task(
                 self.send_initial_message(initial_message),
             )
         else:
@@ -1075,6 +1076,50 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         self.bot_disconnect = bot_disconnect
         self.is_terminated.set()
 
+    async def abort(self):
+        """Attempt bounded local cleanup without draining audio or reporting closure."""
+        self.mark_terminated()
+        workers = [
+            self.agent,
+            self.output_device,
+            self.transcriber,
+            self.transcriptions_worker,
+            self.agent_responses_worker,
+            self.synthesis_results_worker,
+            self.filler_audio_worker,
+            self.actions_worker,
+        ]
+        owned = {self.initial_message_task, self.check_for_idle_task, self.events_task}
+        for worker in workers:
+            owned.update(
+                (
+                    getattr(worker, "worker_task", None),
+                    getattr(worker, "current_task", None),
+                )
+            )
+        owned.discard(None)
+        owned.discard(asyncio.current_task())
+        for task in owned:
+            task.cancel()
+        cleanups = [self.synthesizer.tear_down()]
+        cleanups.extend(worker.terminate() for worker in workers if worker is not None)
+        cleanup_tasks = {asyncio_create_task(cleanup) for cleanup in cleanups}
+        for task in cleanup_tasks:
+            task.add_done_callback(
+                lambda done: None if done.cancelled() else done.exception()
+            )
+        done, pending = await asyncio.wait(owned | cleanup_tasks, timeout=5.0)
+        for task in pending:
+            task.cancel()
+        failed = bool(pending)
+        for task in done:
+            if task.cancelled():
+                failed |= task in cleanup_tasks
+            else:
+                failed |= task.exception() is not None
+        if failed:
+            raise RuntimeError("Conversation abort cleanup incomplete")
+
     async def terminate(self):
         # Only mark terminated if not already done (to preserve bot_disconnect flag)
         if not self.is_terminated.is_set():
@@ -1108,6 +1153,11 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         if self.agent.get_agent_config().end_conversation_callback_url:
             logger.debug("Executing end conversation callback")
             asyncio_create_task(self._execute_end_conversation_callback())
+        if (
+            self.initial_message_task
+            and self.initial_message_task is not asyncio.current_task()
+        ):
+            self.initial_message_task.cancel()
         logger.debug("Tearing down synthesizer")
         await self.synthesizer.tear_down()
         logger.debug("Terminating agent")
