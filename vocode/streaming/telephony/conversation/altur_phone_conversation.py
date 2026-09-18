@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import os
@@ -99,41 +100,50 @@ class AlturPhoneConversation(AbstractPhoneConversation[AlturOutputDevice]):
         return AlturPhoneConversationStateManager(self)
 
     async def attach_ws_and_start(self, ws: WebSocket):
-        # start message
-        await ws.receive()
-        super().attach_ws(ws)
+        try:
+            message = await ws.receive()
+            if message["type"] == "websocket.disconnect":
+                await self.abort()
+                return
+            super().attach_ws(ws)
 
-        await self.start()
-        self.events_manager.publish_event(
-            PhoneCallConnectedEvent(
-                conversation_id=self.id,
-                to_phone_number=self.to_phone,
-                from_phone_number=self.from_phone,
+            await self.start()
+            self.events_manager.publish_event(
+                PhoneCallConnectedEvent(
+                    conversation_id=self.id,
+                    to_phone_number=self.to_phone,
+                    from_phone_number=self.from_phone,
+                )
             )
-        )
-        disconnected = False
-        while self.is_active():
+            disconnected = False
+            while self.is_active():
+                try:
+                    message = await ws.receive()
+                    if message["type"] == "websocket.disconnect":
+                        raise WebSocketDisconnect(message["code"])
+                    if message["type"] == "websocket.receive":
+                        message_content = json.loads(message["text"])
+                        chunk = base64.b64decode(message_content["payload"])
+                        self.receive_audio(chunk)
+                    else:
+                        logger.debug(f"Received non-bytes message: {message}")
+                except WebSocketDisconnect as e:
+                    logger.debug("Websocket disconnected")
+                    if e.code != 1000:
+                        logger.error(
+                            f"Websocket disconnected abnormally with code {e.code} {e.reason}"
+                        )
+                    disconnected = True
+                    break
+            await self.terminate()
+            if not disconnected:
+                await ws.close()
+        except (asyncio.CancelledError, Exception):
             try:
-                message = await ws.receive()
-                if message["type"] == "websocket.disconnect":
-                    raise WebSocketDisconnect(message["code"])
-                if message["type"] == "websocket.receive":
-                    message_content = json.loads(message["text"])
-                    chunk = base64.b64decode(message_content["payload"])
-                    self.receive_audio(chunk)
-                else:
-                    logger.debug(f"Received non-bytes message: {message}")
-            except WebSocketDisconnect as e:
-                logger.debug("Websocket disconnected")
-                if e.code != 1000:
-                    logger.error(
-                        f"Websocket disconnected abnormally with code {e.code} {e.reason}"
-                    )
-                disconnected = True
-                break
-        await self.terminate()
-        if not disconnected:
-            await ws.close()
+                await self.abort()
+            except Exception:
+                logger.warning("Conversation abort cleanup incomplete")
+            raise
 
     def receive_audio(self, chunk: bytes):
         if self.noise_suppression:
