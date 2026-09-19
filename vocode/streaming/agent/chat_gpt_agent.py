@@ -10,19 +10,26 @@ from openai import AsyncAzureOpenAI, AsyncOpenAI, NotFoundError, RateLimitError
 from vocode import sentry_span_tags
 from vocode.streaming.action.abstract_factory import AbstractActionFactory
 from vocode.streaming.action.default_factory import DefaultActionFactory
-from vocode.streaming.agent.base_agent import GeneratedResponse, RespondAgent, StreamedResponse
+from vocode.streaming.agent.base_agent import (
+    GeneratedResponse,
+    RespondAgent,
+    StreamedResponse,
+)
 from vocode.streaming.agent.openai_utils import (
     format_openai_chat_messages_from_transcript,
     openai_get_tokens,
     vector_db_result_to_openai_chat_message,
 )
-from vocode.streaming.agent.streaming_utils import collate_response_async, stream_response_async
+from vocode.streaming.agent.streaming_utils import (
+    collate_response_async,
+    stream_response_async,
+)
 from vocode.streaming.models.actions import FunctionCallActionTrigger
-from vocode.streaming.utils.date_utils import inject_parsed_dates
 from vocode.streaming.models.agent import ChatGPTAgentConfig
 from vocode.streaming.models.events import Sender
 from vocode.streaming.models.message import BaseMessage, BotBackchannel, LLMToken
 from vocode.streaming.models.transcript import Message
+from vocode.streaming.utils.date_utils import inject_parsed_dates
 from vocode.streaming.vector_db.factory import VectorDBFactory
 from vocode.utils.sentry_utils import CustomSentrySpans, sentry_create_span
 
@@ -171,7 +178,10 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
                 f"{'Model not found' if isinstance(e, NotFoundError) else 'Rate limit error'} for model_name: {chat_parameters.get('model')}. Applying fallback.",
                 exc_info=True,
             )
+            previous_client = self.openai_client
             self.apply_model_fallback(chat_parameters)
+            if previous_client is not self.openai_client:
+                await previous_client.close()
             stream = await self.openai_client.chat.completions.create(**chat_parameters)
         return stream
 
@@ -327,6 +337,9 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
                 )
 
     async def terminate(self):
-        if hasattr(self, "vector_db") and self.vector_db is not None:
-            await self.vector_db.tear_down()
-        return await super().terminate()
+        try:
+            await super().terminate()
+            if hasattr(self, "vector_db") and self.vector_db is not None:
+                await self.vector_db.tear_down()
+        finally:
+            await self.openai_client.close()
