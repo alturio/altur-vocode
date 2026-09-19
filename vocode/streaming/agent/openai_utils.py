@@ -261,7 +261,8 @@ async def openai_get_tokens(
     gen: AsyncGenerator[ChatCompletionChunk, None],
 ) -> AsyncGenerator[Union[str, FunctionFragment], None]:
     tool_calls = {}
-    
+    legacy_function_name = ""
+
     async for event in gen:
         choices = event.choices
         if len(choices) == 0:
@@ -269,10 +270,7 @@ async def openai_get_tokens(
         choice = choices[0]
         if choice.finish_reason:
             if choice.finish_reason == "content_filter":
-                logger.warning(
-                    "Detected content filter.",
-                    extra={"chat_completion_chunk": event.model_dump()},
-                )
+                logger.warning("Detected content filter.")
             break
         delta = choice.delta
         if delta.content is not None:
@@ -285,33 +283,24 @@ async def openai_get_tokens(
                     tool_calls[index] = {
                         "id": "",
                         "name": "",
-                        "arguments": "",
-                        "name_sent": False
                     }
-                
+
                 if tool_call_chunk.id:
                     tool_calls[index]["id"] = tool_call_chunk.id
-                
+
                 if tool_call_chunk.function:
                     if tool_call_chunk.function.name:
                         tool_calls[index]["name"] += tool_call_chunk.function.name
-                    if tool_call_chunk.function.arguments:
-                        tool_calls[index]["arguments"] += tool_call_chunk.function.arguments
-                        if index == 0:
-                            name_to_send = ""
-                            if not tool_calls[index]["name_sent"] and tool_calls[index]["name"]:
-                                name_to_send = tool_calls[index]["name"]
-                                tool_calls[index]["name_sent"] = True
-                            
-                            yield FunctionFragment(
-                                name=name_to_send,
-                                arguments=tool_call_chunk.function.arguments,
-                                tool_call_id=tool_calls[index]["id"]
-                            )
+                    if tool_call_chunk.function.arguments and index == 0:
+                        yield FunctionFragment(
+                            name=tool_calls[index]["name"],
+                            arguments=tool_call_chunk.function.arguments,
+                            tool_call_id=tool_calls[index]["id"],
+                        )
         elif delta.function_call is not None:
-            # Backward compatibility for older models
+            legacy_function_name += delta.function_call.name or ""
             yield FunctionFragment(
-                name=(delta.function_call.name if delta.function_call.name is not None else ""),
+                name=legacy_function_name,
                 arguments=(
                     delta.function_call.arguments
                     if delta.function_call.arguments is not None
