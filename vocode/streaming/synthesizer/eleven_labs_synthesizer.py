@@ -1,17 +1,18 @@
 import asyncio
-import hashlib
 import re
 from typing import Optional
 
 from elevenlabs import Voice, VoiceSettings
-from elevenlabs.client import AsyncElevenLabs
 from loguru import logger
 
 from vocode.streaming.models.audio import AudioEncoding, SamplingRate
 from vocode.streaming.models.message import BaseMessage
 from vocode.streaming.models.synthesizer import ElevenLabsSynthesizerConfig
-from vocode.streaming.synthesizer.base_synthesizer import BaseSynthesizer, SynthesisResult
 from vocode.streaming.synthesizer.audio_cache import AudioCache
+from vocode.streaming.synthesizer.base_synthesizer import (
+    BaseSynthesizer,
+    SynthesisResult,
+)
 from vocode.streaming.utils.create_task import asyncio_create_task
 
 ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1/"
@@ -33,9 +34,8 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         assert synthesizer_config.voice_id is not None, "Voice ID must be set"
         self.api_key = synthesizer_config.api_key
 
-        self.elevenlabs_client = AsyncElevenLabs(
-            api_key=self.api_key,
-        )
+        self._chunk_tasks: set[asyncio.Task] = set()
+        self._closed = False
 
         self.model_id = synthesizer_config.model_id
         self.voice_id = synthesizer_config.voice_id
@@ -80,6 +80,8 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         is_first_text_chunk: bool = False,
         is_sole_text_chunk: bool = False,
     ) -> SynthesisResult:
+        if self._closed:
+            raise RuntimeError("ElevenLabs synthesizer is closed")
         # Return empty generator for messages with no word characters
         # (prevents wasted API calls for empty/whitespace/punctuation-only text)
         if not re.search(r"\w", message.text):
@@ -115,9 +117,11 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             body["model_id"] = self.model_id
 
         chunk_queue: asyncio.Queue[Optional[bytes]] = asyncio.Queue()
-        asyncio_create_task(
+        task = asyncio_create_task(
             self.get_chunks(url, headers, body, chunk_size, chunk_queue),
         )
+        self._chunk_tasks.add(task)
+        task.add_done_callback(self._chunk_task_done)
 
         return SynthesisResult(
             self.chunk_result_generator_from_queue(chunk_queue),
@@ -152,30 +156,22 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         audio_buffer = bytearray()
         try:
             async_client = self.async_requestor.get_client()
-            stream = await async_client.send(
-                async_client.build_request(
-                    "POST",
-                    url,
-                    headers=headers,
-                    json=body,
-                ),
-                stream=True,
-            )
-
-            if not stream.is_success:
-                error = await stream.aread()
-                raise ElevenlabsException(
-                    f"ElevenLabs API returned {stream.status_code} status code and the following details: {error.decode('utf-8')}"
-                )
-            async for chunk in stream.aiter_bytes(chunk_size):
-                if self.upsample:
-                    chunk = self._resample_chunk(
-                        chunk,
-                        self.sample_rate,
-                        self.upsample,
+            async with async_client.stream(
+                "POST", url, headers=headers, json=body
+            ) as stream:
+                if not stream.is_success:
+                    raise ElevenlabsException(
+                        f"ElevenLabs request failed ({stream.status_code})"
                     )
-                audio_buffer.extend(chunk)
-                chunk_queue.put_nowait(chunk)
+                async for chunk in stream.aiter_bytes(chunk_size):
+                    if self.upsample:
+                        chunk = self._resample_chunk(
+                            chunk,
+                            self.sample_rate,
+                            self.upsample,
+                        )
+                    audio_buffer.extend(chunk)
+                    chunk_queue.put_nowait(chunk)
 
             if self.synthesizer_config.use_cache:
                 text = body.get("text", "")
@@ -187,7 +183,25 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                         text.strip(),
                         bytes(audio_buffer),
                     )
-        except asyncio.CancelledError:
-            pass
         finally:
             chunk_queue.put_nowait(None)  # treated as sentinel
+
+    def _chunk_task_done(self, task):
+        if task.cancelled() or task.exception() is None:
+            self._chunk_tasks.discard(task)
+        else:
+            logger.warning("ElevenLabs synthesis failed")
+
+    async def tear_down(self):
+        self._closed = True
+        tasks = tuple(self._chunk_tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        if any(
+            isinstance(result, BaseException)
+            and not isinstance(result, asyncio.CancelledError)
+            for result in results
+        ):
+            raise RuntimeError("ElevenLabs cleanup incomplete")

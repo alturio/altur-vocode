@@ -1,6 +1,6 @@
 import os
 import random
-from typing import Any, AsyncGenerator, Dict, List, Optional, TypeVar, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import sentry_sdk
 from groq import AsyncGroq
@@ -9,14 +9,21 @@ from loguru import logger
 from vocode import sentry_span_tags
 from vocode.streaming.action.abstract_factory import AbstractActionFactory
 from vocode.streaming.action.default_factory import DefaultActionFactory
-from vocode.streaming.agent.base_agent import GeneratedResponse, RespondAgent, StreamedResponse
+from vocode.streaming.agent.base_agent import (
+    GeneratedResponse,
+    RespondAgent,
+    StreamedResponse,
+)
 from vocode.streaming.agent.openai_utils import (
     get_openai_chat_messages_from_transcript,
     merge_event_logs,
     openai_get_tokens,
     vector_db_result_to_openai_chat_message,
 )
-from vocode.streaming.agent.streaming_utils import collate_response_async, stream_response_async
+from vocode.streaming.agent.streaming_utils import (
+    collate_response_async,
+    stream_response_async,
+)
 from vocode.streaming.models.actions import FunctionCallActionTrigger
 from vocode.streaming.models.agent import GroqAgentConfig
 from vocode.streaming.models.events import Sender
@@ -110,6 +117,12 @@ class GroqAgent(RespondAgent[GroqAgentConfig]):
             )
             raise e
         return stream
+
+    async def terminate(self):
+        try:
+            await super().terminate()
+        finally:
+            await self.groq_client.close()
 
     def should_backchannel(self, human_input: str) -> bool:
         return (
