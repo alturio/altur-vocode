@@ -103,6 +103,8 @@ def get_tokenizer_info(model: str) -> Optional[TokenizerInfo]:
     encoding = _safe_encoding_for_model(model)
 
     if model.startswith("gpt-5") or model in {
+        "gpt-3.5-turbo-0613",
+        "gpt-4o",
         "gpt-4o-mini",
         "gpt-4.1",
         "gpt-4.1-mini",

@@ -1,4 +1,6 @@
-from vocode.streaming.agent.openai_utils import format_openai_chat_messages_from_transcript
+from vocode.streaming.agent.openai_utils import (
+    format_openai_chat_messages_from_transcript,
+)
 from vocode.streaming.models.actions import (
     ACTION_FINISHED_FORMAT_STRING,
     ActionConfig,
@@ -8,7 +10,12 @@ from vocode.streaming.models.actions import (
     PhraseBasedActionTriggerConfig,
 )
 from vocode.streaming.models.events import Sender
-from vocode.streaming.models.transcript import ActionFinish, ActionStart, Message, Transcript
+from vocode.streaming.models.transcript import (
+    ActionFinish,
+    ActionStart,
+    Message,
+    Transcript,
+)
 
 
 class WeatherActionConfig(ActionConfig, type="weather"):
@@ -20,6 +27,7 @@ def create_fake_vocode_phrase_trigger():
 
 
 def test_format_openai_chat_messages_from_transcript():
+    """Verification: Transcript formatting preserves messages and pairs only actual model-issued tool calls."""
     test_action_input_nophrase = ActionInput(
         action_config=WeatherActionConfig(),
         conversation_id="asdf",
@@ -77,15 +85,21 @@ def test_format_openai_chat_messages_from_transcript():
                 Transcript(
                     event_logs=[
                         Message(sender=Sender.BOT, text="Hello!", is_final=True),
-                        Message(sender=Sender.HUMAN, text="Hello, what's the weather like?"),
+                        Message(
+                            sender=Sender.HUMAN, text="Hello, what's the weather like?"
+                        ),
                         ActionStart(
                             action_type="weather",
                             action_input=test_action_input_nophrase,
+                            tool_call_id="tool_weather",
                         ),
                         ActionFinish(
                             action_type="weather",
                             action_input=test_action_input_nophrase,
-                            action_output=ActionOutput(action_type="weather", response={}),
+                            action_output=ActionOutput(
+                                action_type="weather", response={}
+                            ),
+                            tool_call_id="tool_weather",
                         ),
                     ]
                 ),
@@ -103,11 +117,17 @@ def test_format_openai_chat_messages_from_transcript():
                 {
                     "role": "assistant",
                     "content": None,
-                    "function_call": {"name": "weather", "arguments": "{}"},
+                    "tool_calls": [
+                        {
+                            "id": "tool_weather",
+                            "type": "function",
+                            "function": {"name": "weather", "arguments": "{}"},
+                        }
+                    ],
                 },
                 {
-                    "role": "function",
-                    "name": "weather",
+                    "role": "tool",
+                    "tool_call_id": "tool_weather",
                     "content": ACTION_FINISHED_FORMAT_STRING.format(
                         action_name="weather", action_output="{}"
                     ),
@@ -119,7 +139,9 @@ def test_format_openai_chat_messages_from_transcript():
                 Transcript(
                     event_logs=[
                         Message(sender=Sender.BOT, text="Hello!", is_final=True),
-                        Message(sender=Sender.HUMAN, text="Hello, what's the weather like?"),
+                        Message(
+                            sender=Sender.HUMAN, text="Hello, what's the weather like?"
+                        ),
                         ActionStart(
                             action_type="weather",
                             action_input=test_action_input_phrase,
@@ -127,7 +149,9 @@ def test_format_openai_chat_messages_from_transcript():
                         ActionFinish(
                             action_type="weather",
                             action_input=test_action_input_phrase,
-                            action_output=ActionOutput(action_type="weather", response={}),
+                            action_output=ActionOutput(
+                                action_type="weather", response={}
+                            ),
                         ),
                     ]
                 ),
@@ -142,13 +166,6 @@ def test_format_openai_chat_messages_from_transcript():
                     "role": "user",
                     "content": "Hello, what's the weather like?",
                 },
-                {
-                    "role": "function",
-                    "name": "weather",
-                    "content": ACTION_FINISHED_FORMAT_STRING.format(
-                        action_name="weather", action_output="{}"
-                    ),
-                },
             ],
         ),
     ]
@@ -158,6 +175,7 @@ def test_format_openai_chat_messages_from_transcript():
 
 
 def test_format_openai_chat_messages_from_transcript_context_limit():
+    """Edge Case: Stored legacy transcripts trim old messages while retaining their system prompt."""
     test_cases = [
         (
             (
@@ -192,80 +210,9 @@ def test_format_openai_chat_messages_from_transcript_context_limit():
                         ),
                         Message(sender=Sender.HUMAN, text="I'm doing well, thanks!"),
                         Message(sender=Sender.BOT, text="aaaa " * 1862),
-                        Message(sender=Sender.HUMAN, text="What? What did you just say???"),
                         Message(
-                            sender=Sender.BOT,
-                            text="My apologies, there was an error. Please ignore my previous message",
-                            is_final=True,
+                            sender=Sender.HUMAN, text="What? What did you just say???"
                         ),
-                        Message(
-                            sender=Sender.HUMAN,
-                            text="Don't worry I ignored all 1862 * 5 characters of it.",
-                        ),
-                    ]
-                ),
-                "gpt-3.5-turbo-0613",
-                None,
-                "prompt preamble",
-            ),
-            [
-                {"role": "system", "content": "prompt preamble"},
-                {
-                    "content": "What? What did you just say???",
-                    "role": "user",
-                },
-                {
-                    "role": "assistant",
-                    "content": "My apologies, there was an error. Please ignore my previous message",
-                },
-                {
-                    "role": "user",
-                    "content": "Don't worry I ignored all 1862 * 5 characters of it.",
-                },
-            ],
-        ),
-    ]
-
-    for params, expected_output in test_cases:
-        assert format_openai_chat_messages_from_transcript(*params) == expected_output
-
-
-def test_format_openai_chat_messages_from_transcript_context_limit():
-    test_cases = [
-        (
-            (
-                Transcript(
-                    event_logs=[
-                        Message(sender=Sender.BOT, text="Hello!", is_final=True),
-                        Message(
-                            sender=Sender.BOT,
-                            text="How are you doing today? I'm doing amazing thank you so much for asking!",
-                        ),
-                        Message(sender=Sender.HUMAN, text="I'm doing well, thanks!"),
-                    ]
-                ),
-                "gpt-3.5-turbo-0613",
-                None,
-                "aaaa " * 1862,
-            ),
-            [
-                {"role": "system", "content": "aaaa " * 1862},
-                {"role": "user", "content": "I'm doing well, thanks!"},
-            ],
-        ),
-        (
-            (
-                Transcript(
-                    event_logs=[
-                        Message(sender=Sender.BOT, text="Hello!"),
-                        Message(
-                            sender=Sender.BOT,
-                            text="How are you doing today? I'm doing amazing thank you so much for asking!",
-                            is_final=True,
-                        ),
-                        Message(sender=Sender.HUMAN, text="I'm doing well, thanks!"),
-                        Message(sender=Sender.BOT, text="aaaa " * 1862),
-                        Message(sender=Sender.HUMAN, text="What? What did you just say???"),
                         Message(
                             sender=Sender.BOT,
                             text="My apologies, there was an error. Please ignore my previous message",

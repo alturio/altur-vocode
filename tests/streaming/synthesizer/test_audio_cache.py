@@ -2,60 +2,49 @@ import pytest
 from fakeredis import FakeAsyncRedis, FakeServer
 from pytest_mock import MockerFixture
 
+from vocode.streaming.synthesizer.audio_cache import AudioCache
 from vocode.streaming.utils.singleton import Singleton
 
 
 @pytest.fixture(autouse=True)
 def cleanup_singleton_audio_cache():
-    from vocode.streaming.synthesizer.audio_cache import AudioCache
-
-    if AudioCache in Singleton._instances:
-        del Singleton._instances[AudioCache]
+    Singleton._instances.pop(AudioCache, None)
     yield
+    Singleton._instances.pop(AudioCache, None)
 
 
 @pytest.mark.asyncio
 async def test_set_and_get(mocker: MockerFixture):
-    from vocode.streaming.synthesizer.audio_cache import AudioCache
-
+    """Basic: Audio caching preserves content and isolates otherwise identical language keys."""
     fake_redis = FakeAsyncRedis()
-
     mocker.patch(
-        "vocode.streaming.synthesizer.audio_cache.initialize_redis_bytes", return_value=fake_redis
+        "vocode.streaming.synthesizer.audio_cache.initialize_redis_bytes",
+        return_value=fake_redis,
     )
-
-    cache = await AudioCache.safe_create()
-    voice_identifier = "voice_id"
-    text = "text"
-    audio_data = b"chunk"
-
-    assert await cache.get_audio(voice_identifier, text) is None
-
-    await cache.set_audio(voice_identifier, text, audio_data)
-    assert await cache.get_audio(voice_identifier, text) == b"chunk"
+    try:
+        cache = await AudioCache.safe_create()
+        assert await cache.get_audio("en", "voice_id", "text") is None
+        await cache.set_audio("en", "voice_id", "text", b"chunk")
+        assert await cache.get_audio("en", "voice_id", "text") == b"chunk"
+        assert await cache.get_audio("es", "voice_id", "text") is None
+    finally:
+        await fake_redis.aclose()
 
 
 @pytest.mark.asyncio
 async def test_safe_create_set_and_get_disabled(mocker: MockerFixture):
-    from vocode.streaming.synthesizer.audio_cache import AudioCache
-
-    # will fail the ping
+    """Error Handling: An unavailable optional cache preserves synthesis without cache hits."""
     server = FakeServer()
     server.connected = False
-
     fake_redis = FakeAsyncRedis(server=server)
-
     mocker.patch(
-        "vocode.streaming.synthesizer.audio_cache.initialize_redis_bytes", return_value=fake_redis
+        "vocode.streaming.synthesizer.audio_cache.initialize_redis_bytes",
+        return_value=fake_redis,
     )
-
-    cache = await AudioCache.safe_create()
-    voice_identifier = "voice_id"
-    text = "text"
-    audio_data = b"chunk"
-
-    assert await cache.get_audio(voice_identifier, text) is None
-
-    await cache.set_audio(voice_identifier, text, audio_data)
-
-    assert await cache.get_audio(voice_identifier, text) is None
+    try:
+        cache = await AudioCache.safe_create()
+        assert await cache.get_audio("en", "voice_id", "text") is None
+        await cache.set_audio("en", "voice_id", "text", b"chunk")
+        assert await cache.get_audio("en", "voice_id", "text") is None
+    finally:
+        await fake_redis.aclose()
