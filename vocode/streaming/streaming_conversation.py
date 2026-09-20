@@ -22,7 +22,6 @@ import httpx
 import sentry_sdk
 from loguru import logger
 from sentry_sdk.tracing import Span
-
 from vocode import conversation_id as ctx_conversation_id
 from vocode.streaming.action.worker import ActionsWorker
 from vocode.streaming.agent.base_agent import (
@@ -73,6 +72,7 @@ from vocode.streaming.utils import (
 from vocode.streaming.utils.audio_pipeline import AudioPipeline, OutputDeviceType
 from vocode.streaming.utils.create_task import asyncio_create_task
 from vocode.streaming.utils.events_manager import EventsManager
+from vocode.streaming.utils.provider_lifecycle import current_provider_scope
 from vocode.streaming.utils.speed_manager import SpeedManager
 from vocode.streaming.utils.state_manager import ConversationStateManager
 from vocode.streaming.utils.worker import (
@@ -657,6 +657,12 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
         conversation_id: Optional[str] = None,
         events_manager: Optional[EventsManager] = None,
     ):
+        self._provider_scope = current_provider_scope.get()
+        if self._provider_scope is not None and any(
+            getattr(provider, "_provider_scope", None) is not self._provider_scope
+            for provider in (agent, transcriber, synthesizer)
+        ):
+            self._provider_scope.uncertain = True
         self.id = conversation_id or create_conversation_id()
         ctx_conversation_id.set(self.id)
 
@@ -1079,6 +1085,9 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
     async def abort(self):
         """Attempt bounded local cleanup without draining audio or reporting closure."""
         self.mark_terminated()
+        scope = getattr(self, "_provider_scope", None)
+        if scope is not None:
+            scope.closed = True
         workers = [
             self.agent,
             self.output_device,
@@ -1099,7 +1108,16 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
             )
         owned.discard(None)
         owned.discard(asyncio.current_task())
-        for task in owned:
+        graceful = set()
+        if (
+            scope is not None
+            and getattr(self.transcriber, "_provider_scope", None) is scope
+        ):
+            graceful = {
+                getattr(self.transcriber, name, None)
+                for name in ("worker_task", "current_task")
+            }
+        for task in owned - graceful:
             task.cancel()
         cleanups = [self.synthesizer.tear_down()]
         cleanups.extend(worker.terminate() for worker in workers if worker is not None)
@@ -1119,8 +1137,12 @@ class StreamingConversation(AudioPipeline[OutputDeviceType]):
                 failed |= task.exception() is not None
         if failed:
             raise RuntimeError("Conversation abort cleanup incomplete")
+        if scope is not None:
+            scope.joined = True
 
     async def terminate(self):
+        if (scope := getattr(self, "_provider_scope", None)) is not None:
+            scope.closed = True
         # Only mark terminated if not already done (to preserve bot_disconnect flag)
         if not self.is_terminated.is_set():
             self.mark_terminated()

@@ -6,7 +6,6 @@ import sentry_sdk
 from loguru import logger
 from openai import DEFAULT_MAX_RETRIES as OPENAI_DEFAULT_MAX_RETRIES
 from openai import AsyncAzureOpenAI, AsyncOpenAI, NotFoundError, RateLimitError
-
 from vocode import sentry_span_tags
 from vocode.streaming.action.abstract_factory import AbstractActionFactory
 from vocode.streaming.action.default_factory import DefaultActionFactory
@@ -30,6 +29,11 @@ from vocode.streaming.models.events import Sender
 from vocode.streaming.models.message import BaseMessage, BotBackchannel, LLMToken
 from vocode.streaming.models.transcript import Message
 from vocode.streaming.utils.date_utils import inject_parsed_dates
+from vocode.streaming.utils.provider_lifecycle import (
+    current_provider_scope,
+    provider_stream,
+    register_provider,
+)
 from vocode.streaming.vector_db.factory import VectorDBFactory
 from vocode.utils.sentry_utils import CustomSentrySpans, sentry_create_span
 
@@ -37,6 +41,7 @@ ChatGPTAgentConfigType = TypeVar("ChatGPTAgentConfigType", bound=ChatGPTAgentCon
 
 
 def instantiate_openai_client(agent_config: ChatGPTAgentConfig, model_fallback: bool = False):
+    model_fallback = model_fallback or current_provider_scope.get() is not None
     if agent_config.azure_params:
         return AsyncAzureOpenAI(
             azure_endpoint=agent_config.azure_params.base_url,
@@ -71,9 +76,15 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
             action_factory=action_factory,
             **kwargs,
         )
+        self._provider_scope = register_provider("llm")
         self.openai_client = instantiate_openai_client(
             agent_config, model_fallback=agent_config.llm_fallback is not None
         )
+        if (
+            agent_config.vector_db_config
+            and (scope := current_provider_scope.get()) is not None
+        ):
+            scope.uncertain = True
 
         if not self.openai_client.api_key:
             raise ValueError("OPENAI_API_KEY must be set in environment or passed in")
@@ -165,7 +176,10 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
                     # TODO: handle OpenAI fallback to Azure
                     pass
 
-        self.openai_client = instantiate_openai_client(self.agent_config, model_fallback=False)
+        self.openai_client = instantiate_openai_client(
+            self.agent_config,
+            model_fallback=getattr(self, "_provider_scope", None) is not None,
+        )
         chat_parameters["model"] = self.agent_config.llm_fallback.model_name
 
     async def _create_openai_stream_with_fallback(
@@ -211,6 +225,7 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
                 return BotBackchannel(text=self.post_question_bot_backchannel_randomizer())
         return backchannel
 
+    @provider_stream
     async def generate_response(
         self,
         human_input: str,
@@ -218,6 +233,7 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
         is_interrupt: bool = False,
         bot_was_in_medias_res: bool = False,
         is_tool_response: bool = False,
+        _provider_request=None,
     ) -> AsyncGenerator[GeneratedResponse, None]:
         assert self.transcript is not None
 
@@ -312,9 +328,7 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfigType]):
             response_generator = stream_response_async
         async for message in response_generator(
             conversation_id=conversation_id,
-            gen=openai_get_tokens(
-                stream,
-            ),
+            gen=openai_get_tokens(stream, provider_request=_provider_request),
             get_functions=True,
             sentry_span=ttft_span,
         ):

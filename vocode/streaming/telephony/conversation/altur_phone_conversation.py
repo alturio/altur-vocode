@@ -7,7 +7,6 @@ from typing import Optional
 import numpy as np
 from fastapi import WebSocket, WebSocketDisconnect
 from loguru import logger
-
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.amd import AMDConfig
@@ -136,6 +135,8 @@ class AlturPhoneConversation(AbstractPhoneConversation[AlturOutputDevice]):
                     disconnected = True
                     break
             await self.terminate()
+            if getattr(self, "_provider_scope", None) is not None:
+                await self.abort()
             if not disconnected:
                 await ws.close()
         except (asyncio.CancelledError, Exception):

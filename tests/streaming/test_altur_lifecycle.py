@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -11,6 +12,11 @@ from vocode.streaming.telephony.constants import (
 from vocode.streaming.telephony.conversation.altur_phone_conversation import (
     AlturPhoneConversation,
 )
+from vocode.streaming.utils.provider_lifecycle import (
+    ProviderScope,
+    complete_provider_request,
+    provider_request,
+)
 
 
 class TestAlturLifecycleCancellation(unittest.IsolatedAsyncioTestCase):
@@ -21,6 +27,7 @@ class TestAlturLifecycleCancellation(unittest.IsolatedAsyncioTestCase):
     - Initial disconnect never starts providers.
     - Forced cleanup attempts every component even when one fails or stalls.
     - Delayed greetings and known worker tasks are cancelled and joined.
+    - Managed transcription can acknowledge closure before local cancellation.
     """
 
     def setUp(self):
@@ -102,6 +109,50 @@ class TestAlturLifecycleCancellation(unittest.IsolatedAsyncioTestCase):
         self.transcriber.start.assert_not_called()
         self.agent.start.assert_not_called()
         self.synthesizer.tear_down.assert_awaited_once()
+
+    async def test_managed_abort_waits_for_transcription_completion_before_cancelling(
+        self,
+    ):
+        """Critical: Managed abort permits final transcription metadata and joins its worker before confirming cleanup."""
+        scope = ProviderScope(
+            deadline=time.monotonic() + 10, providers={"llm", "stt", "tts"}
+        )
+        self.conversation._provider_scope = self.transcriber._provider_scope = scope
+        entered, finish = asyncio.Event(), asyncio.Event()
+
+        async def provider():
+            with provider_request(scope) as request:
+                entered.set()
+                await finish.wait()
+                complete_provider_request(request)
+
+        async def terminate():
+            self.assertTrue(scope.closed)
+            self.assertFalse(self.transcriber.worker_task.cancelled())
+            finish.set()
+            await self.transcriber.worker_task
+
+        self.transcriber.worker_task = asyncio.create_task(provider())
+        self.transcriber.terminate.side_effect = terminate
+        await entered.wait()
+        await self.conversation.abort()
+        self.assertTrue(scope.confirmed)
+        self.assertTrue(self.transcriber.worker_task.done())
+
+    async def test_failed_managed_cleanup_cannot_confirm_task_join(self):
+        """Error Handling: Provider completion does not conceal a failed local cleanup."""
+        scope = ProviderScope(
+            deadline=time.monotonic() + 10, providers={"llm", "stt", "tts"}
+        )
+        self.conversation._provider_scope = scope
+        self.synthesizer.tear_down.side_effect = RuntimeError("cleanup failed")
+        with self.assertRaisesRegex(
+            RuntimeError, "Conversation abort cleanup incomplete"
+        ):
+            await self.conversation.abort()
+        self.assertTrue(scope.closed)
+        self.assertFalse(scope.joined)
+        self.assertFalse(scope.confirmed)
 
     async def test_abort_failure_does_not_skip_other_resources(self):
         """Error Handling: One failed cleanup cannot prevent other components from stopping."""

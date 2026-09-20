@@ -1,15 +1,15 @@
 import asyncio
 import json
+import math
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple, Union
 from urllib.parse import urlencode
+from uuid import UUID
 
 import sentry_sdk
 import websockets
 from loguru import logger
 from pydantic.v1 import BaseModel, Field
-from websockets.asyncio.client import ClientConnection
-
 from vocode import getenv
 from vocode.streaming.models.audio import AudioEncoding
 from vocode.streaming.models.transcriber import (
@@ -21,7 +21,17 @@ from vocode.streaming.models.transcriber import (
     Transcription,
 )
 from vocode.streaming.transcriber.base_transcriber import BaseAsyncTranscriber
-from vocode.utils.sentry_utils import CustomSentrySpans, sentry_configured, sentry_create_span
+from vocode.streaming.utils.provider_lifecycle import (
+    complete_provider_request,
+    provider_operation,
+    register_provider,
+)
+from vocode.utils.sentry_utils import (
+    CustomSentrySpans,
+    sentry_configured,
+    sentry_create_span,
+)
+from websockets.asyncio.client import ClientConnection
 
 PUNCTUATION_TERMINATORS = [".", "!", "?"]
 NUM_RESTARTS = 5
@@ -79,6 +89,11 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
         self,
         transcriber_config: DeepgramTranscriberConfig,
     ):
+        self._provider_scope = register_provider("stt")
+        self._provider_socket = None
+        self._provider_finishing = False
+        self._provider_finished = asyncio.Event()
+        self._provider_close_lock = asyncio.Lock()
         super().__init__(transcriber_config)
         self.api_key = self.transcriber_config.api_key or getenv("DEEPGRAM_API_KEY")
         if not self.api_key:
@@ -178,6 +193,24 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
         logger.error("Deepgram connection died, not restarting")
 
     async def terminate(self):
+        if self._provider_scope is not None:
+            async with self._provider_close_lock:
+                self._ended = True
+                try:
+                    if (
+                        self._provider_socket is not None
+                        and not self._provider_finished.is_set()
+                    ):
+                        self._provider_finishing = True
+                        self._input_queue.put_nowait(b"")
+                        async with asyncio.timeout(1):
+                            await self._provider_socket.send(
+                                json.dumps({"type": "CloseStream"})
+                            )
+                            await self._provider_finished.wait()
+                finally:
+                    await super().terminate()
+            return
         self._track_latency_of_transcription_start()
         # Put this in logs until we sentry metrics show up
         # properly on dashboard
@@ -385,18 +418,23 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
             return 0.0
         return words[-1]["end"] - words[0]["start"]
 
-    async def process(self):
+    @provider_operation
+    async def process(self, _provider_request=None):
         self.audio_cursor = 0.0
         self.start_ts = now()
 
         additional_headers = {"Authorization": f"Token {self.api_key}"}
         deepgram_url = self.get_deepgram_url()
-        logger.info(f"Connecting to Deepgram at {deepgram_url}")
+        logger.info("Connecting to Deepgram")
 
         try:
             async with websockets.connect(
-                deepgram_url, additional_headers=additional_headers
+                deepgram_url,
+                additional_headers=additional_headers,
+                **({"close_timeout": 1} if self._provider_scope is not None else {}),
             ) as ws:
+                self._provider_socket = ws
+                self._provider_finished.clear()
                 self.connected_ts = now()
 
                 async def sender(
@@ -410,6 +448,8 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                         except asyncio.exceptions.TimeoutError:
                             break
 
+                        if self._provider_scope is not None and self._ended:
+                            break
                         self.audio_cursor += len(data) / byte_rate
 
                         if not self.start_sending_ts:
@@ -427,15 +467,32 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                     words_buffer = []
                     is_final_ts: Optional[datetime] = None
 
-                    while not self._ended:
+                    while not self._ended or self._provider_finishing:
                         try:
                             msg = await ws.recv()
                             if not self.start_receiving_ts:
                                 self.start_receiving_ts = now()
-                        except Exception as e:
-                            logger.debug(f"Got error {e} in Deepgram receiver")
+                        except Exception:
+                            logger.debug("Deepgram receive interrupted")
                             break
                         data = json.loads(msg)
+                        if self._provider_finishing and data.get("type") == "Metadata":
+                            try:
+                                UUID(data["request_id"])
+                                duration = data["duration"]
+                                valid = (
+                                    type(duration) in (int, float)
+                                    and math.isfinite(duration)
+                                    and duration >= 0
+                                    and type(data.get("channels")) is int
+                                    and 0 <= data["channels"] <= NUM_AUDIO_CHANNELS
+                                )
+                            except (KeyError, ValueError, TypeError, AttributeError):
+                                valid = False
+                            if valid:
+                                complete_provider_request(_provider_request)
+                                self._provider_finished.set()
+                                return
 
                         if "start" in data and "duration" in data:
                             self._track_transcription_latency(
@@ -456,7 +513,7 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                         elif data["type"] == "UtteranceEnd":
                             deepgram_response = DeepgramUtteranceEnd()
                         else:
-                            logger.info(f"Ignoring deepgram response type: {data['type']}")
+                            logger.debug("Ignoring unsupported Deepgram response")
                             continue
 
                         if (
@@ -528,10 +585,14 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
 
                     logger.debug("Terminating Deepgram transcriber receiver")
 
-                await asyncio.gather(sender(ws), receiver(ws))
-
-        except asyncio.exceptions.TimeoutError:
-            raise
+                if self._provider_scope is not None:
+                    async with asyncio.TaskGroup() as group:
+                        group.create_task(sender(ws))
+                        group.create_task(receiver(ws))
+                else:
+                    await asyncio.gather(sender(ws), receiver(ws))
+        finally:
+            self._provider_socket = None
 
     @sentry_configured
     def _track_latency_of_transcription_start(
