@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional
 import httpx
 from loguru import logger
 from pydantic.v1 import BaseModel
+from vocode.streaming.utils.provider_lifecycle import current_provider_scope
 
 
 class ExternalActionValueError(ValueError):
@@ -49,6 +50,7 @@ class ExternalActionsRequester:
     ) -> None:
         self.url = url
         self._auth = auth
+        self._provider_scope = current_provider_scope.get()
 
     async def send_request(
         self,
@@ -61,6 +63,10 @@ class ExternalActionsRequester:
         method: str = "POST",
         wrap_arguments: bool = True,
     ) -> ExternalActionResponse:
+        if (scope := self._provider_scope or current_provider_scope.get()) is not None:
+            scope.admit()
+            # External mutations need their own authoritative terminal receipts.
+            scope.uncertain = True
         if wrap_arguments:
             payload_to_send = {"arguments": payload}
         else:
@@ -96,7 +102,9 @@ class ExternalActionsRequester:
                 data = response.json()
                 return self._validate_response(data)
             except httpx.HTTPStatusError as e:
-                logger.error(f"[External Actions] Request failed: {e}")
+                logger.error(
+                    "External action request failed ({})", e.response.status_code
+                )
                 if e.response.status_code == 401:
                     return ExternalActionResponse(
                         result={"info": ExternalActionsErrorResponses.unauthorized},
@@ -116,15 +124,16 @@ class ExternalActionsRequester:
                     return ExternalActionResponse(
                         result={
                             "info": ExternalActionsErrorResponses.server_error.format(
-                                status=e.response.status_code, text=e.response.text
+                                status=e.response.status_code,
+                                text="External request failed",
                             )
                         },
                         success=False,
                     )
                 else:
                     raise e
-            except (httpx.ReadTimeout, httpx.TimeoutException) as e:
-                logger.error(f"[External Actions] Request timed out: {e}")
+            except httpx.TimeoutException:
+                logger.error("External action request timed out")
                 return ExternalActionResponse(
                     result={
                         "info": "The external service took too long to respond. Please try again later."

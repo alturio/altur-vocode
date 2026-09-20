@@ -1,16 +1,17 @@
 import asyncio
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
-
 from vocode.streaming.models.message import BaseMessage
 from vocode.streaming.models.synthesizer import ElevenLabsSynthesizerConfig
 from vocode.streaming.synthesizer.eleven_labs_synthesizer import (
     ElevenlabsException,
     ElevenLabsSynthesizer,
 )
+from vocode.streaming.utils.provider_lifecycle import ProviderScope
 
 
 class RecordingStream(httpx.AsyncByteStream):
@@ -40,6 +41,7 @@ class TestElevenLabsProducerLifecycle(unittest.IsolatedAsyncioTestCase):
     - Teardown joins producers without closing other calls' shared HTTP client
     - Closed synthesizers reject late work and cleanup failures remain visible
     - Provider response bodies are not included in errors
+    - Only fully consumed provider responses supply completion evidence
     """
 
     async def asyncSetUp(self):
@@ -82,6 +84,28 @@ class TestElevenLabsProducerLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.stream.closed)
         self.assertFalse(self.client.is_closed)
         self.assertFalse(self.synthesizer._chunk_tasks)
+
+    async def test_managed_response_completion_is_distinct_from_transport_cleanup(self):
+        """Verification: Fully consumed synthesis confirms its request without depending on ambient task context."""
+        owner = ProviderScope(deadline=time.monotonic() + 10)
+        self.synthesizer._provider_scope = owner
+        result = await self.speech()
+        self.assertTrue([chunk async for chunk in result.chunk_generator])
+        await self.synthesizer.tear_down()
+        self.assertEqual(owner.pending, 0)
+        self.assertFalse(owner.uncertain)
+
+    async def test_managed_cancellation_retains_unknown_provider_outcome(self):
+        """Critical: A cancelled response does not certify remote synthesis completion even after local closure."""
+        owner = ProviderScope(deadline=time.monotonic() + 10)
+        self.synthesizer._provider_scope = owner
+        self.stream.blocked = True
+        await self.speech()
+        await asyncio.wait_for(self.stream.started.wait(), 1)
+        await self.synthesizer.tear_down()
+        self.assertTrue(self.stream.closed)
+        self.assertEqual(owner.pending, 0)
+        self.assertTrue(owner.uncertain)
 
     async def test_teardown_cancels_and_joins_blocked_producers(self):
         """Critical: Teardown closes in-flight synthesis without shutting down the shared client."""

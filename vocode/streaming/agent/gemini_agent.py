@@ -5,15 +5,27 @@ from typing import AsyncGenerator
 import httpx
 from google import genai
 from google.genai import types
-
 from vocode.streaming.action.abstract_factory import AbstractActionFactory
 from vocode.streaming.action.default_factory import DefaultActionFactory
-from vocode.streaming.agent.base_agent import GeneratedResponse, RespondAgent, StreamedResponse
-from vocode.streaming.agent.streaming_utils import collate_response_async, stream_response_async
+from vocode.streaming.agent.base_agent import (
+    GeneratedResponse,
+    RespondAgent,
+    StreamedResponse,
+)
+from vocode.streaming.agent.streaming_utils import (
+    collate_response_async,
+    stream_response_async,
+)
 from vocode.streaming.models.actions import FunctionCallActionTrigger, FunctionFragment
 from vocode.streaming.models.agent import GeminiAgentConfig
 from vocode.streaming.models.message import BaseMessage, LLMToken
 from vocode.streaming.utils.date_utils import inject_parsed_dates
+from vocode.streaming.utils.provider_lifecycle import (
+    complete_provider_request,
+    current_provider_scope,
+    provider_stream,
+    register_provider,
+)
 
 
 class GeminiAgent(RespondAgent[GeminiAgentConfig]):
@@ -37,10 +49,16 @@ class GeminiAgent(RespondAgent[GeminiAgentConfig]):
         )
         if not api_key:
             raise ValueError("GOOGLE_API_KEY must be set for Gemini models")
+        self._provider_scope = register_provider("llm")
         self._httpx_client = httpx.AsyncClient()
         self._client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(httpx_async_client=self._httpx_client),
+            http_options=types.HttpOptions(
+                httpx_async_client=self._httpx_client,
+                retry_options=types.HttpRetryOptions(attempts=1)
+                if current_provider_scope.get() is not None
+                else None,
+            ),
         )
 
     def get_functions(self):
@@ -77,9 +95,15 @@ class GeminiAgent(RespondAgent[GeminiAgentConfig]):
         return types.GenerateContentConfig(**kwargs)
 
     async def _token_generator(
-        self, stream
+        self, stream, *, provider_request=None
     ) -> AsyncGenerator[str | FunctionFragment, None]:
         async for chunk in stream:
+            if chunk.candidates and all(
+                candidate.finish_reason
+                not in (None, types.FinishReason.FINISH_REASON_UNSPECIFIED)
+                for candidate in chunk.candidates
+            ):
+                complete_provider_request(provider_request)
             if chunk.text:
                 yield chunk.text
             for call in chunk.function_calls or []:
@@ -89,6 +113,7 @@ class GeminiAgent(RespondAgent[GeminiAgentConfig]):
                     tool_call_id=getattr(call, "id", None),
                 )
 
+    @provider_stream
     async def generate_response(
         self,
         human_input: str,
@@ -96,6 +121,7 @@ class GeminiAgent(RespondAgent[GeminiAgentConfig]):
         is_interrupt: bool = False,
         bot_was_in_medias_res: bool = False,
         is_tool_response: bool = False,
+        _provider_request=None,
     ) -> AsyncGenerator[GeneratedResponse, None]:
         if not self.transcript:
             raise ValueError("A transcript is not attached to the agent")
@@ -125,7 +151,7 @@ class GeminiAgent(RespondAgent[GeminiAgentConfig]):
         )
         async for message in response_generator(
             conversation_id=conversation_id,
-            gen=self._token_generator(stream),
+            gen=self._token_generator(stream, provider_request=_provider_request),
             get_functions=True,
         ):
             response_class = (

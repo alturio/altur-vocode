@@ -5,7 +5,6 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import sentry_sdk
 from groq import AsyncGroq
 from loguru import logger
-
 from vocode import sentry_span_tags
 from vocode.streaming.action.abstract_factory import AbstractActionFactory
 from vocode.streaming.action.default_factory import DefaultActionFactory
@@ -29,6 +28,11 @@ from vocode.streaming.models.agent import GroqAgentConfig
 from vocode.streaming.models.events import Sender
 from vocode.streaming.models.message import BaseMessage, BotBackchannel, LLMToken
 from vocode.streaming.models.transcript import EventLog, Message, Transcript
+from vocode.streaming.utils.provider_lifecycle import (
+    current_provider_scope,
+    provider_stream,
+    register_provider,
+)
 from vocode.streaming.vector_db.factory import VectorDBFactory
 from vocode.utils.sentry_utils import CustomSentrySpans, sentry_create_span
 
@@ -53,7 +57,16 @@ class GroqAgent(RespondAgent[GroqAgentConfig]):
             or os.getenv("FASTAPI_GROQ_API_KEY")
             or os.getenv("GROQ_API_KEY")
         )
-        self.groq_client = AsyncGroq(api_key=api_key)
+        self._provider_scope = register_provider("llm")
+        self.groq_client = AsyncGroq(
+            api_key=api_key,
+            **({"max_retries": 0} if current_provider_scope.get() is not None else {}),
+        )
+        if (
+            agent_config.vector_db_config
+            and (scope := current_provider_scope.get()) is not None
+        ):
+            scope.uncertain = True
 
         if not self.groq_client.api_key:
             raise ValueError("GROQ_API_KEY must be set in environment or passed in")
@@ -143,12 +156,14 @@ class GroqAgent(RespondAgent[GroqAgentConfig]):
                 return BotBackchannel(text=self.post_question_bot_backchannel_randomizer())
         return backchannel
 
+    @provider_stream
     async def generate_response(
         self,
         human_input: str,
         conversation_id: str,
         is_interrupt: bool = False,
         bot_was_in_medias_res: bool = False,
+        _provider_request=None,
     ) -> AsyncGenerator[GeneratedResponse, None]:
         assert self.transcript is not None
 
@@ -229,9 +244,7 @@ class GroqAgent(RespondAgent[GroqAgentConfig]):
             response_generator = stream_response_async
         async for message in response_generator(
             conversation_id=conversation_id,
-            gen=openai_get_tokens(
-                stream,
-            ),
+            gen=openai_get_tokens(stream, provider_request=_provider_request),
             get_functions=True,
             sentry_span=ttft_span,
         ):

@@ -3,7 +3,6 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from loguru import logger
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
-
 from vocode.streaming.agent.token_utils import (
     get_chat_gpt_max_tokens,
     num_tokens_from_functions,
@@ -20,6 +19,7 @@ from vocode.streaming.models.transcript import (
     Message,
     Transcript,
 )
+from vocode.streaming.utils.provider_lifecycle import complete_provider_request
 
 
 def vector_db_result_to_openai_chat_message(vector_db_result):
@@ -259,6 +259,8 @@ def format_openai_chat_messages_from_transcript(
 
 async def openai_get_tokens(
     gen: AsyncGenerator[ChatCompletionChunk, None],
+    *,
+    provider_request=None,
 ) -> AsyncGenerator[Union[str, FunctionFragment], None]:
     tool_calls = {}
     legacy_function_name = ""
@@ -269,6 +271,7 @@ async def openai_get_tokens(
             continue
         choice = choices[0]
         if choice.finish_reason:
+            complete_provider_request(provider_request)
             if choice.finish_reason == "content_filter":
                 logger.warning("Detected content filter.")
             break

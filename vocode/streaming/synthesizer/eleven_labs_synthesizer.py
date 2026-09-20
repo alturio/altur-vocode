@@ -4,7 +4,6 @@ from typing import Optional
 
 from elevenlabs import Voice, VoiceSettings
 from loguru import logger
-
 from vocode.streaming.models.audio import AudioEncoding, SamplingRate
 from vocode.streaming.models.message import BaseMessage
 from vocode.streaming.models.synthesizer import ElevenLabsSynthesizerConfig
@@ -14,6 +13,11 @@ from vocode.streaming.synthesizer.base_synthesizer import (
     SynthesisResult,
 )
 from vocode.streaming.utils.create_task import asyncio_create_task
+from vocode.streaming.utils.provider_lifecycle import (
+    complete_provider_request,
+    provider_operation,
+    register_provider,
+)
 
 ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1/"
 STREAMED_CHUNK_SIZE = 16000 * 2 // 4  # 1/8 of a second of 16kHz audio with 16-bit samples
@@ -28,6 +32,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         self,
         synthesizer_config: ElevenLabsSynthesizerConfig,
     ):
+        self._provider_scope = register_provider("tts")
         super().__init__(synthesizer_config)
 
         assert synthesizer_config.api_key is not None, "API key must be set"
@@ -82,6 +87,8 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
     ) -> SynthesisResult:
         if self._closed:
             raise RuntimeError("ElevenLabs synthesizer is closed")
+        if self._provider_scope is not None:
+            self._provider_scope.admit()
         # Return empty generator for messages with no word characters
         # (prevents wasted API calls for empty/whitespace/punctuation-only text)
         if not re.search(r"\w", message.text):
@@ -145,6 +152,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             )
         )
 
+    @provider_operation
     async def get_chunks(
         self,
         url: str,
@@ -152,6 +160,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         body: dict,
         chunk_size: int,
         chunk_queue: asyncio.Queue[Optional[bytes]],
+        _provider_request=None,
     ):
         audio_buffer = bytearray()
         try:
@@ -173,6 +182,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                     audio_buffer.extend(chunk)
                     chunk_queue.put_nowait(chunk)
 
+            complete_provider_request(_provider_request)
             if self.synthesizer_config.use_cache:
                 text = body.get("text", "")
                 if text:
