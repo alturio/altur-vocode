@@ -144,17 +144,20 @@ def num_tokens_from_messages(messages: List[dict], model: str = "gpt-4o-mini"):
 # END OF OPENAI COOKBOOK CODE AND GIVEN MIT LICENSE.
 
 
-def tokens_from_dict(encoding: tiktoken.Encoding, d: Dict[str, Any], tokens_per_name: int) -> int:
-    """Return the number of OpenAI tokens in a dict."""
+def tokens_from_dict(
+    encoding: tiktoken.Encoding, d: Dict[str, Any] | List[Any], tokens_per_name: int
+) -> int:
+    """Return the number of OpenAI tokens in nested message dictionaries and lists."""
     num_tokens: int = 0
-    for key, value in d.items():
+    items = d.items() if isinstance(d, dict) else enumerate(d)
+    for key, value in items:
         if value is None:
             continue
         if isinstance(value, str):
             num_tokens += len(encoding.encode(value))
             if key == "name":
                 num_tokens += tokens_per_name
-        elif isinstance(value, dict):
+        elif isinstance(value, (dict, list)):
             num_tokens += tokens_from_dict(
                 encoding=encoding, d=value, tokens_per_name=tokens_per_name
             )

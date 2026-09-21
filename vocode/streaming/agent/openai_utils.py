@@ -221,28 +221,19 @@ def format_openai_chat_messages_from_transcript(
         if len(chat_messages) <= 1:
             logger.error(f"Prompt is too long to fit in context window, num tokens {context_size}")
             break
-        num_removed_messages += 1
-        
-        # Remove messages more carefully to avoid breaking tool call/response pairs
-        # Find the first message that can be safely removed
-        removed = False
-        for i in range(1, len(chat_messages)):
-            msg = chat_messages[i]
-            # Skip system message and tool responses
-            if msg.get("role") == "system" or msg.get("role") == "tool":
-                continue
-            # Skip assistant messages with tool calls (need to remove with their responses)
-            if msg.get("role") == "assistant" and msg.get("tool_calls"):
-                continue
-            # Safe to remove this message
-            chat_messages.pop(i)
-            removed = True
-            break
-            
-        if not removed:
-            # If we couldn't find a safe message to remove, just remove from index 1
-            chat_messages.pop(1)
-            
+        previous_count = len(chat_messages)
+        removed = chat_messages.pop(1)
+        tool_call_ids = {call["id"] for call in removed.get("tool_calls", [])}
+        chat_messages = [
+            message
+            for message in chat_messages
+            if not (
+                message.get("role") == "tool"
+                and message.get("tool_call_id") in tool_call_ids
+            )
+        ]
+        num_removed_messages += previous_count - len(chat_messages)
+
         context_size = num_tokens_from_messages(
             messages=chat_messages,
             model=model_name,
@@ -250,7 +241,7 @@ def format_openai_chat_messages_from_transcript(
 
     if num_removed_messages > 0:
         logger.info(
-            "Removed %d messages from prompt to satisfy context limit",
+            "Removed {} messages from prompt to satisfy context limit",
             num_removed_messages,
         )
 
