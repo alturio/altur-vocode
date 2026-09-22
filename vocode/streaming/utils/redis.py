@@ -14,7 +14,7 @@ WorkerInputType = TypeVar("WorkerInputType")
 # typing gets picked up properly
 
 
-def initialize_redis(retries: int = 1, max_connections: int = 30):
+def initialize_redis(retries: int = 1, max_connections: int = 30, *, db: int = 0):
     backoff = ExponentialBackoff() if retries > 1 else NoBackoff()
     retry = Retry(backoff, retries)
     return Redis(  # type: ignore
@@ -22,6 +22,7 @@ def initialize_redis(retries: int = 1, max_connections: int = 30):
         port=int(os.environ.get("REDISPORT", 6379)),
         username=os.environ.get("REDISUSER", None),
         password=os.environ.get("REDISPASSWORD", None),
+        db=db,
         decode_responses=True,
         retry=retry,
         ssl=bool(os.environ.get("REDISSSL", False)),

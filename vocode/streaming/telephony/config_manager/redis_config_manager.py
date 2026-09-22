@@ -9,8 +9,8 @@ from vocode.streaming.utils.redis import initialize_redis
 
 
 class RedisConfigManager(BaseConfigManager):
-    def __init__(self):
-        self.redis: Redis = initialize_redis()
+    def __init__(self, *, db: int = 0):
+        self.redis: Redis = initialize_redis(db=db)
 
     async def _set_with_one_day_expiration(self, *args, **kwargs):
         ONE_DAY_SECONDS = 60 * 60 * 24
